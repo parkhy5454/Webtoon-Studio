@@ -164,7 +164,7 @@ export default function HomePage() {
   }, [selectedId]);
 
   const inviteUrl = `${siteOrigin}/?ref=${encodeURIComponent(myReferralCode)}`;
-  const inviteText = `[달빛 웹툰 스튜디오] 《${selectedWebtoon.title}》 같이 보자!\n추천 코드(${myReferralCode})로 멤버십 가입하면 첫 달 혜택을 받을 수 있어요.\n👉 ${inviteUrl}`;
+  const inviteText = `[웹툰스튜디오스] 《${selectedWebtoon.title}》 같이 보자!\n추천 코드(${myReferralCode})로 멤버십 가입하면 첫 달 혜택을 받을 수 있어요.\n👉 ${inviteUrl}`;
 
   async function handleCopyReferralLink() {
     try {
@@ -179,7 +179,7 @@ export default function HomePage() {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: `달빛 웹툰 스튜디오 - ${selectedWebtoon.title}`,
+          title: `웹툰스튜디오스 - ${selectedWebtoon.title}`,
           text: `추천 코드(${myReferralCode})로 함께 감상하세요!`,
           url: inviteUrl,
         });
@@ -376,7 +376,7 @@ export default function HomePage() {
             </div>
             <div>
               <h1 className="text-sm md:text-base font-black tracking-tight text-white">
-                달빛 웹툰 스튜디오
+                웹툰스튜디오스
               </h1>
               <div className="flex items-center space-x-2 text-[11px]">
                 <span
@@ -602,19 +602,52 @@ export default function HomePage() {
             </div>
 
             {viewerMode === "cuts" ? (
-              <div className="max-w-2xl mx-auto space-y-6">
+              <div className="max-w-2xl mx-auto space-y-4">
                 {(selectedWebtoon.cuts || []).map((cut, i) => (
                   <div
                     key={i}
-                    className="bg-gray-900 rounded-2xl overflow-hidden border border-gray-800 shadow-xl"
+                    className="bg-gray-900/95 rounded-2xl overflow-hidden border border-gray-800 shadow-xl"
                   >
-                    <img
-                      src={cut.img}
-                      alt={`웹툰 컷 ${i + 1}`}
-                      className="w-full object-cover"
-                    />
-                    <div className="p-4 text-xs text-gray-300 border-t border-gray-800">
-                      {cut.caption}
+                    {(cut.showImage !== false) && (
+                      <img
+                        src={cut.img}
+                        alt={`웹툰 컷 ${cut.num || i + 1}`}
+                        className="w-full object-cover"
+                      />
+                    )}
+                    <div className="p-4 space-y-2.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-black text-indigo-300 bg-indigo-950/80 border border-indigo-800/70 px-2.5 py-0.5 rounded-full">
+                          CUT {String(cut.num || i + 1).padStart(2, "0")}
+                        </span>
+                        {cut.shot && (
+                          <span className="text-gray-500">{cut.shot}</span>
+                        )}
+                      </div>
+
+                      {cut.scene && (
+                        <p className="text-xs text-gray-300 leading-relaxed">{cut.scene}</p>
+                      )}
+
+                      {cut.narration && (
+                        <div className="bg-amber-50 text-gray-950 text-xs font-bold px-3.5 py-2.5 rounded-lg border-l-4 border-amber-500 shadow">
+                          {cut.narration}
+                        </div>
+                      )}
+
+                      {cut.dialogue && (
+                        <div className="bg-white text-gray-950 text-xs font-bold px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-md inline-block max-w-full whitespace-pre-line">
+                          {cut.dialogue}
+                        </div>
+                      )}
+
+                      {cut.sfx && (
+                        <div className="text-right">
+                          <span className="inline-block text-xs font-black italic text-amber-300 tracking-wider">
+                            {cut.sfx}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1201,7 +1234,7 @@ export default function HomePage() {
       <footer className="border-t border-gray-900 py-8 bg-gray-950 text-center text-xs text-gray-500 space-y-2 px-4">
         <div className="flex items-center justify-center space-x-1.5 text-gray-400 font-semibold">
           <ShieldCheck className="w-4 h-4 text-indigo-400" />
-          <span>© 2026 달빛 웹툰 스튜디오. All rights reserved.</span>
+          <span>© 2026 웹툰스튜디오스. All rights reserved.</span>
         </div>
         <p className="text-[11px] text-gray-600">
           상호명: [상호명 입력] | 대표자: [대표자명] | 사업자등록번호: [000-00-00000] |

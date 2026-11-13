@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       genre,
       badge: "신규 창작자 오리지널 연재작",
       subtitle: subtitle || `${author} 작가의 새로운 이야기`,
-      description: description || `${title} — 달빛 웹툰 스튜디오 독점 연재작.`,
+      description: description || `${title} — 웹툰스튜디오스 독점 연재작.`,
       poster,
       ep1_title: ep1Title,
       ep2_title: "제2화 (연재 예정)",
