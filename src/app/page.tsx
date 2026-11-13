@@ -5,14 +5,19 @@ import {
   BookOpen,
   Check,
   CheckCircle2,
+  Copy,
   Crown,
   Database,
+  Gift,
   Heart,
   Layers,
+  MessageCircle,
   MessageSquare,
   PenTool,
   Settings,
+  Share2,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   TrendingUp,
   Users,
@@ -48,6 +53,10 @@ export default function HomePage() {
   const [commName, setCommName] = useState("");
   const [commTier, setCommTier] = useState("달동네 스페셜");
   const [commText, setCommText] = useState("");
+
+  // Referral state
+  const [myReferralCode, setMyReferralCode] = useState("MOON-2026");
+  const [siteOrigin, setSiteOrigin] = useState("https://dalbit-webtoon.vercel.app");
 
   // Subscription Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -126,6 +135,26 @@ export default function HomePage() {
   useEffect(() => {
     loadInitialData();
     loadSubscriptions();
+
+    if (typeof window !== "undefined") {
+      setSiteOrigin(window.location.origin);
+
+      const savedCode = window.localStorage.getItem("dalbit_referral_code");
+      if (savedCode) {
+        setMyReferralCode(savedCode);
+      } else {
+        const generated = `MOON-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        window.localStorage.setItem("dalbit_referral_code", generated);
+        setMyReferralCode(generated);
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const refFromUrl = params.get("ref");
+      if (refFromUrl) {
+        setReferralInput(refFromUrl);
+        showToast(`친구 추천 코드(${refFromUrl})가 자동 적용되었습니다!`);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -133,6 +162,44 @@ export default function HomePage() {
       loadComments(selectedId);
     }
   }, [selectedId]);
+
+  const inviteUrl = `${siteOrigin}/?ref=${encodeURIComponent(myReferralCode)}`;
+  const inviteText = `[달빛 웹툰 스튜디오] 《${selectedWebtoon.title}》 같이 보자!\n추천 코드(${myReferralCode})로 멤버십 가입하면 첫 달 혜택을 받을 수 있어요.\n👉 ${inviteUrl}`;
+
+  async function handleCopyReferralLink() {
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      showToast("추천 링크가 복사되었습니다! 카톡이나 문자에 붙여넣기 해보세요.");
+    } catch {
+      showToast(`추천 링크: ${inviteUrl}`);
+    }
+  }
+
+  async function handleKakaoShare() {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: `달빛 웹툰 스튜디오 - ${selectedWebtoon.title}`,
+          text: `추천 코드(${myReferralCode})로 함께 감상하세요!`,
+          url: inviteUrl,
+        });
+        return;
+      } catch {
+        // 사용자 취소 또는 미지원 시 클립보드 복사로 폴백
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(inviteText);
+      showToast("카카오톡 공유용 추천 메시지가 복사되었습니다! 카톡방에 붙여넣기 하세요.");
+    } catch {
+      showToast("추천 링크를 복사해 카카오톡으로 공유해 주세요.");
+    }
+  }
+
+  function handleSmsShare() {
+    const smsHref = `sms:?&body=${encodeURIComponent(inviteText)}`;
+    window.location.href = smsHref;
+  }
 
   async function handleLike() {
     setWebtoons((prev) =>
@@ -439,6 +506,13 @@ export default function HomePage() {
                     <Heart className="w-4 h-4" />
                     <span>{selectedWebtoon.likes}</span>
                   </button>
+                  <button
+                    onClick={handleKakaoShare}
+                    className="px-4 py-3 rounded-xl bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 font-bold text-sm border border-yellow-500/40 transition flex items-center space-x-1.5"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    <span>친구 추천</span>
+                  </button>
                 </div>
               </div>
 
@@ -583,29 +657,78 @@ export default function HomePage() {
         {/* TAB: MEMBERSHIP */}
         {activeTab === "membership" && (
           <section className="space-y-8 animate-fade-in">
-            <div className="glass-panel p-5 rounded-3xl border border-emerald-500/30 flex flex-wrap items-center justify-between gap-4">
-              <div className="space-y-1">
-                <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950 px-2.5 py-0.5 rounded-full border border-emerald-700">
-                  6 : 4 창작자 상생 모델
-                </span>
-                <h3 className="text-lg font-black text-white">
-                  구독료 60% 플랫폼 · 40% 작가 직접 배분
-                </h3>
-                <p className="text-xs text-gray-400">
-                  독자가 월 ₩4,900을 구독하면 ₩2,940은 플랫폼 운영에,{" "}
-                  <strong className="text-emerald-300">₩1,960(40%)은 작품 작가</strong>에게
-                  투명하게 정산됩니다.
-                </p>
+            {/* 6:4 SPLIT & FRIEND REFERRAL WIDGET */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="glass-panel p-5 rounded-3xl border border-emerald-500/30 flex flex-col justify-between space-y-4">
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950 px-2.5 py-0.5 rounded-full border border-emerald-700">
+                    6 : 4 창작자 상생 모델
+                  </span>
+                  <h3 className="text-lg font-black text-white">
+                    구독료 60% 플랫폼 · 40% 작가 직접 배분
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    독자가 월 ₩4,900을 구독하면 ₩2,940은 플랫폼 운영에,{" "}
+                    <strong className="text-emerald-300">₩1,960(40%)은 작품 작가</strong>에게
+                    투명하게 정산됩니다.
+                  </p>
+                </div>
+                <div>
+                  <button
+                    onClick={() => {
+                      setSettingsSubTab("admin");
+                      setActiveTab("settings");
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition"
+                  >
+                    실시간 정산 현황 보기
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  setSettingsSubTab("admin");
-                  setActiveTab("settings");
-                }}
-                className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition"
-              >
-                실시간 정산 현황 보기
-              </button>
+
+              {/* FRIEND REFERRAL CARD (카카오톡 / 문자 공유) */}
+              <div className="glass-panel p-5 rounded-3xl border border-amber-500/30 flex flex-col justify-between space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <span className="inline-flex items-center space-x-1 text-[11px] font-bold text-amber-300 bg-amber-950 px-2.5 py-0.5 rounded-full border border-amber-700">
+                      <Gift className="w-3 h-3" />
+                      <span>친구 추천 이벤트</span>
+                    </span>
+                    <h3 className="text-lg font-black text-white">
+                      카톡·문자로 친구에게 작품 추천하기
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      내 추천 코드{" "}
+                      <strong className="text-amber-300 font-mono">{myReferralCode}</strong>로
+                      친구가 가입하면 구독 시 자동 기록됩니다.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleKakaoShare}
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#FEE500] hover:bg-[#f5dc00] text-[#191919] text-xs font-black transition shadow"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>카카오톡 추천</span>
+                  </button>
+                  <button
+                    onClick={handleSmsShare}
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>문자(SMS) 보내기</span>
+                  </button>
+                  <button
+                    onClick={handleCopyReferralLink}
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold border border-gray-700 transition"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>링크 복사</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="text-center space-y-2">
@@ -955,6 +1078,7 @@ export default function HomePage() {
                             <th className="py-2 pr-4">요금제</th>
                             <th className="py-2 pr-4">결제금액</th>
                             <th className="py-2 pr-4">작가 배분(40%)</th>
+                            <th className="py-2 pr-4">추천코드</th>
                             <th className="py-2">상태</th>
                           </tr>
                         </thead>
@@ -968,6 +1092,9 @@ export default function HomePage() {
                               <td className="py-2.5 pr-4">₩{s.price_krw.toLocaleString()}</td>
                               <td className="py-2.5 pr-4 text-emerald-400">
                                 ₩{s.creator_share_krw.toLocaleString()}
+                              </td>
+                              <td className="py-2.5 pr-4 text-amber-300 font-mono">
+                                {s.referral_code || "-"}
                               </td>
                               <td className="py-2.5">
                                 <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px]">
