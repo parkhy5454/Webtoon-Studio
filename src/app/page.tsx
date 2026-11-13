@@ -11,6 +11,7 @@ import {
   Layers,
   MessageSquare,
   PenTool,
+  Settings,
   ShieldCheck,
   Sparkles,
   TrendingUp,
@@ -20,7 +21,8 @@ import {
 import type { CommentItem, SubscriptionItem, WebtoonItem } from "@/lib/seed-data";
 import { DEFAULT_COMMENTS, DEFAULT_WEBTOONS } from "@/lib/seed-data";
 
-type TabId = "hero" | "viewer" | "membership" | "community" | "creator" | "admin";
+type TabId = "hero" | "viewer" | "membership" | "community" | "settings";
+type SettingsSubTab = "creator" | "admin";
 
 declare global {
   interface Window {
@@ -36,6 +38,7 @@ declare global {
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabId>("hero");
+  const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>("creator");
   const [dbConnected, setDbConnected] = useState<boolean>(false);
   const [webtoons, setWebtoons] = useState<WebtoonItem[]>(DEFAULT_WEBTOONS);
   const [selectedId, setSelectedId] = useState<string>("seoul-moon");
@@ -288,13 +291,11 @@ export default function HomePage() {
     }
   }
 
-  const navItems: { id: TabId; label: string }[] = [
+  const navItems: { id: Exclude<TabId, "settings">; label: string }[] = [
     { id: "hero", label: "작품 소개" },
     { id: "viewer", label: "웹툰 뷰어" },
     { id: "membership", label: "멤버십 구독" },
     { id: "community", label: "팬덤 커뮤니티" },
-    { id: "creator", label: "작가 스튜디오" },
-    { id: "admin", label: "정산/관리" },
   ];
 
   return (
@@ -339,6 +340,18 @@ export default function HomePage() {
                 {item.label}
               </button>
             ))}
+            <button
+              onClick={() => setActiveTab("settings")}
+              title="작가 스튜디오 및 정산 관리 설정"
+              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition ml-1 ${
+                activeTab === "settings"
+                  ? "bg-gray-800 text-amber-300 border-amber-500/50 shadow"
+                  : "bg-gray-900/80 text-gray-400 border-gray-800 hover:text-white hover:border-gray-700"
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>설정</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -346,7 +359,7 @@ export default function HomePage() {
       {/* MAIN */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-10">
         {/* WEBTOON SWITCHER */}
-        {webtoons.length > 1 && (
+        {webtoons.length > 1 && activeTab !== "settings" && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-gray-400 font-semibold mr-1">연재 작품 선택:</span>
             {webtoons.map((w) => (
@@ -585,7 +598,10 @@ export default function HomePage() {
                 </p>
               </div>
               <button
-                onClick={() => setActiveTab("admin")}
+                onClick={() => {
+                  setSettingsSubTab("admin");
+                  setActiveTab("settings");
+                }}
                 className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition"
               >
                 실시간 정산 현황 보기
@@ -786,154 +802,187 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* TAB: CREATOR STUDIO */}
-        {activeTab === "creator" && (
+        {/* TAB: SETTINGS (작가 스튜디오 & 정산/관리 통합) */}
+        {activeTab === "settings" && (
           <section className="space-y-6 animate-fade-in">
-            <div className="glass-panel p-6 rounded-3xl border border-indigo-500/30 space-y-4">
-              <div className="flex items-center space-x-2">
-                <PenTool className="w-5 h-5 text-indigo-400" />
-                <h2 className="text-xl font-black text-white">작가 스튜디오 — 신작 등록</h2>
-              </div>
-              <p className="text-xs text-gray-400">
-                신규 웹툰을 등록하면 Neon PostgreSQL 데이터베이스에 즉시 저장되고 구독 서비스에
-                노출됩니다.
-              </p>
-
-              <form onSubmit={handlePublishWebtoon} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input
-                    type="text"
-                    placeholder="작품명 (예: 네오 서울의 밤)"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    required
-                    className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="작가명"
-                    value={newAuthor}
-                    onChange={(e) => setNewAuthor(e.target.value)}
-                    required
-                    className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                  />
-                  <select
-                    value={newGenre}
-                    onChange={(e) => setNewGenre(e.target.value)}
-                    className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                  >
-                    <option value="드라마">드라마</option>
-                    <option value="SF/스릴러">SF/스릴러</option>
-                    <option value="로맨스">로맨스</option>
-                    <option value="판타지">판타지</option>
-                  </select>
+            <div className="glass-panel p-5 rounded-3xl border border-gray-800 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-700 flex items-center justify-center text-amber-300">
+                  <Settings className="w-5 h-5" />
                 </div>
-                <input
-                  type="text"
-                  placeholder="한 줄 카피 (부제목)"
-                  value={newSubtitle}
-                  onChange={(e) => setNewSubtitle(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                />
-                <textarea
-                  rows={3}
-                  placeholder="작품 시놉시스 설명"
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                />
+                <div>
+                  <h2 className="text-lg font-black text-white">스튜디오 설정 및 관리</h2>
+                  <p className="text-xs text-gray-400">
+                    작품 등록(작가 스튜디오)과 6:4 수익 정산 현황을 관리합니다.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center bg-gray-900 p-1 rounded-xl border border-gray-800">
                 <button
-                  type="submit"
-                  disabled={publishing}
-                  className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs transition"
+                  onClick={() => setSettingsSubTab("creator")}
+                  className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-bold transition ${
+                    settingsSubTab === "creator"
+                      ? "bg-indigo-600 text-white shadow"
+                      : "text-gray-400 hover:text-white"
+                  }`}
                 >
-                  {publishing ? "등록 중..." : "작품 등록 및 연재 시작"}
+                  <PenTool className="w-3.5 h-3.5" />
+                  <span>작가 스튜디오</span>
                 </button>
-              </form>
-            </div>
-          </section>
-        )}
-
-        {/* TAB: ADMIN / REVENUE SPLIT */}
-        {activeTab === "admin" && (
-          <section className="space-y-6 animate-fade-in">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="w-6 h-6 text-emerald-400" />
-              <h2 className="text-2xl font-black text-white">실시간 구독 & 6:4 정산 대시보드</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="glass-panel p-5 rounded-2xl border border-gray-800">
-                <div className="text-xs text-gray-400">총 활성 구독</div>
-                <div className="text-2xl font-black text-white mt-1">
-                  {summary.totalSubscriptions.toLocaleString()}건
-                </div>
-              </div>
-              <div className="glass-panel p-5 rounded-2xl border border-gray-800">
-                <div className="text-xs text-gray-400">월 누적 구독 매출</div>
-                <div className="text-2xl font-black text-amber-300 mt-1">
-                  ₩{summary.monthlyRevenueKrw.toLocaleString()}
-                </div>
-              </div>
-              <div className="glass-panel p-5 rounded-2xl border border-emerald-500/30">
-                <div className="text-xs text-emerald-300">작가 정산금 (40%)</div>
-                <div className="text-2xl font-black text-emerald-400 mt-1">
-                  ₩{summary.creatorShareKrw.toLocaleString()}
-                </div>
-              </div>
-              <div className="glass-panel p-5 rounded-2xl border border-indigo-500/30">
-                <div className="text-xs text-indigo-300">플랫폼 운영 (60%)</div>
-                <div className="text-2xl font-black text-indigo-400 mt-1">
-                  ₩{summary.platformShareKrw.toLocaleString()}
-                </div>
+                <button
+                  onClick={() => setSettingsSubTab("admin")}
+                  className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-bold transition ${
+                    settingsSubTab === "admin"
+                      ? "bg-emerald-600 text-white shadow"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>정산/관리</span>
+                </button>
               </div>
             </div>
 
-            <div className="glass-panel p-5 rounded-2xl border border-gray-800 space-y-3">
-              <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                <Layers className="w-4 h-4 text-indigo-400" />
-                <span>최근 구독 결제 내역 (Neon DB)</span>
-              </h3>
-              {subscriptions.length === 0 ? (
-                <p className="text-xs text-gray-500 py-4">
-                  아직 DB에 기록된 신규 구독 결제가 없습니다. 멤버십 탭에서 테스트 결제를
-                  진행해 보세요.
+            {settingsSubTab === "creator" ? (
+              <div className="glass-panel p-6 rounded-3xl border border-indigo-500/30 space-y-4">
+                <div className="flex items-center space-x-2">
+                  <PenTool className="w-5 h-5 text-indigo-400" />
+                  <h3 className="text-xl font-black text-white">작가 스튜디오 — 신작 등록</h3>
+                </div>
+                <p className="text-xs text-gray-400">
+                  신규 웹툰을 등록하면 Neon PostgreSQL 데이터베이스에 즉시 저장되고 구독 서비스에
+                  노출됩니다.
                 </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead className="text-gray-400 border-b border-gray-800">
-                      <tr>
-                        <th className="py-2 pr-4">구독자</th>
-                        <th className="py-2 pr-4">요금제</th>
-                        <th className="py-2 pr-4">결제금액</th>
-                        <th className="py-2 pr-4">작가 배분(40%)</th>
-                        <th className="py-2">상태</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-800/60">
-                      {subscriptions.map((s) => (
-                        <tr key={s.id}>
-                          <td className="py-2.5 pr-4 text-white font-semibold">
-                            {s.customer_name}
-                          </td>
-                          <td className="py-2.5 pr-4 text-indigo-300">{s.tier_name}</td>
-                          <td className="py-2.5 pr-4">₩{s.price_krw.toLocaleString()}</td>
-                          <td className="py-2.5 pr-4 text-emerald-400">
-                            ₩{s.creator_share_krw.toLocaleString()}
-                          </td>
-                          <td className="py-2.5">
-                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px]">
-                              {s.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+                <form onSubmit={handlePublishWebtoon} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input
+                      type="text"
+                      placeholder="작품명 (예: 네오 서울의 밤)"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      required
+                      className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="작가명"
+                      value={newAuthor}
+                      onChange={(e) => setNewAuthor(e.target.value)}
+                      required
+                      className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
+                    />
+                    <select
+                      value={newGenre}
+                      onChange={(e) => setNewGenre(e.target.value)}
+                      className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
+                    >
+                      <option value="드라마">드라마</option>
+                      <option value="SF/스릴러">SF/스릴러</option>
+                      <option value="로맨스">로맨스</option>
+                      <option value="판타지">판타지</option>
+                    </select>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="한 줄 카피 (부제목)"
+                    value={newSubtitle}
+                    onChange={(e) => setNewSubtitle(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
+                  />
+                  <textarea
+                    rows={3}
+                    placeholder="작품 시놉시스 설명"
+                    value={newDesc}
+                    onChange={(e) => setNewDesc(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={publishing}
+                    className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs transition"
+                  >
+                    {publishing ? "등록 중..." : "작품 등록 및 연재 시작"}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="glass-panel p-5 rounded-2xl border border-gray-800">
+                    <div className="text-xs text-gray-400">총 활성 구독</div>
+                    <div className="text-2xl font-black text-white mt-1">
+                      {summary.totalSubscriptions.toLocaleString()}건
+                    </div>
+                  </div>
+                  <div className="glass-panel p-5 rounded-2xl border border-gray-800">
+                    <div className="text-xs text-gray-400">월 누적 구독 매출</div>
+                    <div className="text-2xl font-black text-amber-300 mt-1">
+                      ₩{summary.monthlyRevenueKrw.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="glass-panel p-5 rounded-2xl border border-emerald-500/30">
+                    <div className="text-xs text-emerald-300">작가 정산금 (40%)</div>
+                    <div className="text-2xl font-black text-emerald-400 mt-1">
+                      ₩{summary.creatorShareKrw.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="glass-panel p-5 rounded-2xl border border-indigo-500/30">
+                    <div className="text-xs text-indigo-300">플랫폼 운영 (60%)</div>
+                    <div className="text-2xl font-black text-indigo-400 mt-1">
+                      ₩{summary.platformShareKrw.toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
+
+                <div className="glass-panel p-5 rounded-2xl border border-gray-800 space-y-3">
+                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-indigo-400" />
+                    <span>최근 구독 결제 내역 (Neon DB)</span>
+                  </h3>
+                  {subscriptions.length === 0 ? (
+                    <p className="text-xs text-gray-500 py-4">
+                      아직 DB에 기록된 신규 구독 결제가 없습니다. 멤버십 탭에서 테스트 결제를
+                      진행해 보세요.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="text-gray-400 border-b border-gray-800">
+                          <tr>
+                            <th className="py-2 pr-4">구독자</th>
+                            <th className="py-2 pr-4">요금제</th>
+                            <th className="py-2 pr-4">결제금액</th>
+                            <th className="py-2 pr-4">작가 배분(40%)</th>
+                            <th className="py-2">상태</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800/60">
+                          {subscriptions.map((s) => (
+                            <tr key={s.id}>
+                              <td className="py-2.5 pr-4 text-white font-semibold">
+                                {s.customer_name}
+                              </td>
+                              <td className="py-2.5 pr-4 text-indigo-300">{s.tier_name}</td>
+                              <td className="py-2.5 pr-4">₩{s.price_krw.toLocaleString()}</td>
+                              <td className="py-2.5 pr-4 text-emerald-400">
+                                ₩{s.creator_share_krw.toLocaleString()}
+                              </td>
+                              <td className="py-2.5">
+                                <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px]">
+                                  {s.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
         )}
       </main>
