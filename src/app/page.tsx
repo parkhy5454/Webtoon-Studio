@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { CommentItem, SubscriptionItem, WebtoonItem } from "@/lib/seed-data";
 import { DEFAULT_COMMENTS, DEFAULT_WEBTOONS } from "@/lib/seed-data";
+import { EPISODES_100 } from "@/lib/episodes-100";
 
 type TabId = "hero" | "viewer" | "membership" | "community" | "settings";
 type SettingsSubTab = "creator" | "admin";
@@ -48,6 +49,8 @@ export default function HomePage() {
   const [webtoons, setWebtoons] = useState<WebtoonItem[]>(DEFAULT_WEBTOONS);
   const [selectedId, setSelectedId] = useState<string>("seoul-moon");
   const [viewerMode, setViewerMode] = useState<"cuts" | "script">("cuts");
+  const [currentEpNum, setCurrentEpNum] = useState<number>(1);
+  const [showEpList, setShowEpList] = useState<boolean>(false);
 
   const [comments, setComments] = useState<CommentItem[]>(DEFAULT_COMMENTS);
   const [commName, setCommName] = useState("");
@@ -570,122 +573,244 @@ export default function HomePage() {
         )}
 
         {/* TAB: VIEWER */}
-        {activeTab === "viewer" && (
-          <section className="space-y-6 animate-fade-in">
-            <div className="glass-panel rounded-2xl border border-gray-800 p-5 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black text-white">{selectedWebtoon.ep1_title}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{selectedWebtoon.ep1_subtitle}</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setViewerMode("cuts")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    viewerMode === "cuts"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-gray-800 text-gray-300 hover:text-white"
-                  }`}
-                >
-                  원고 컷 뷰어
-                </button>
-                <button
-                  onClick={() => setViewerMode("script")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    viewerMode === "script"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-gray-800 text-gray-300 hover:text-white"
-                  }`}
-                >
-                  콘티 스크립트
-                </button>
-              </div>
-            </div>
+        {activeTab === "viewer" && (() => {
+          const isSeoulMoon = selectedWebtoon.id === "seoul-moon";
+          const activeEpisode = isSeoulMoon
+            ? (EPISODES_100.find((ep) => ep.epNumber === currentEpNum) || EPISODES_100[0])
+            : null;
+          const activeCuts = activeEpisode ? activeEpisode.cuts : (selectedWebtoon.cuts || []);
 
-            {viewerMode === "cuts" ? (
-              <div className="max-w-2xl mx-auto space-y-4">
-                {(selectedWebtoon.cuts || []).map((cut, i) => (
-                  <div
-                    key={i}
-                    className="bg-gray-900/95 rounded-2xl overflow-hidden border border-gray-800 shadow-xl"
-                  >
-                    {(cut.showImage !== false) && (
-                      <img
-                        src={cut.img}
-                        alt={`웹툰 컷 ${cut.num || i + 1}`}
-                        className="w-full object-cover"
-                      />
-                    )}
-                    <div className="p-4 space-y-2.5">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-black text-indigo-300 bg-indigo-950/80 border border-indigo-800/70 px-2.5 py-0.5 rounded-full">
-                          CUT {String(cut.num || i + 1).padStart(2, "0")}
+          return (
+            <section className="space-y-6 animate-fade-in">
+              <div className="glass-panel rounded-2xl border border-gray-800 p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[11px] font-bold text-amber-300 bg-amber-950/70 border border-amber-700/60 px-2.5 py-0.5 rounded-full">
+                        {isSeoulMoon ? `5컷/화 · 총 100화 완결` : selectedWebtoon.genre}
+                      </span>
+                      {activeEpisode && (
+                        <span className="text-[11px] text-indigo-300 font-semibold">
+                          {activeEpisode.part}
                         </span>
-                        {cut.shot && (
-                          <span className="text-gray-500">{cut.shot}</span>
-                        )}
-                      </div>
-
-                      {cut.scene && (
-                        <p className="text-xs text-gray-300 leading-relaxed">{cut.scene}</p>
-                      )}
-
-                      {cut.narration && (
-                        <div className="bg-amber-50 text-gray-950 text-xs font-bold px-3.5 py-2.5 rounded-lg border-l-4 border-amber-500 shadow">
-                          {cut.narration}
-                        </div>
-                      )}
-
-                      {cut.dialogue && (
-                        <div className="bg-white text-gray-950 text-xs font-bold px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-md inline-block max-w-full whitespace-pre-line">
-                          {cut.dialogue}
-                        </div>
-                      )}
-
-                      {cut.sfx && (
-                        <div className="text-right">
-                          <span className="inline-block text-xs font-black italic text-amber-300 tracking-wider">
-                            {cut.sfx}
-                          </span>
-                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
-
-                <div className="glass-panel rounded-2xl border border-amber-500/40 p-6 text-center space-y-3">
-                  <Crown className="w-8 h-8 text-amber-300 mx-auto" />
-                  <h3 className="text-lg font-black text-white">
-                    {selectedWebtoon.ep2_title} (멤버십 선공개)
-                  </h3>
-                  <p className="text-xs text-gray-400">
-                    월 2,900원 멤버십으로 2주 빠른 선공개 원고를 바로 감상하세요.
-                  </p>
-                  <button
-                    onClick={() => setActiveTab("membership")}
-                    className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs transition"
-                  >
-                    멤버십 요금제 보기
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {(selectedWebtoon.script_lines || []).map((line, idx) => (
-                  <div
-                    key={idx}
-                    className="glass-panel rounded-2xl border border-gray-800 p-5 space-y-2"
-                  >
-                    <span className="text-xs font-bold text-indigo-400">{line.cut}</span>
-                    <p className="text-sm text-gray-200">{line.scene}</p>
-                    <p className="text-xs text-amber-300 bg-gray-900 p-3 rounded-xl border border-gray-800">
-                      {line.dialogue}
+                    <h2 className="text-xl font-black text-white mt-1.5">
+                      {activeEpisode ? activeEpisode.title : selectedWebtoon.ep1_title}
+                    </h2>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {isSeoulMoon ? "회당 5컷 연재 포맷 (1~100화 전체 열람 가능)" : selectedWebtoon.ep1_subtitle}
                     </p>
                   </div>
-                ))}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isSeoulMoon && (
+                      <button
+                        onClick={() => setShowEpList(!showEpList)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-amber-300 border border-amber-500/40 hover:bg-gray-700 transition"
+                      >
+                        {showEpList ? "목차 닫기" : "전체 100화 목차"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setViewerMode("cuts")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                        viewerMode === "cuts"
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-800 text-gray-300 hover:text-white"
+                      }`}
+                    >
+                      원고 컷 뷰어
+                    </button>
+                    <button
+                      onClick={() => setViewerMode("script")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                        viewerMode === "script"
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-800 text-gray-300 hover:text-white"
+                      }`}
+                    >
+                      콘티 스크립트
+                    </button>
+                  </div>
+                </div>
+
+                {isSeoulMoon && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-gray-800/80">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setCurrentEpNum((n) => Math.max(1, n - 1))}
+                        disabled={currentEpNum <= 1}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 border border-gray-800 text-gray-300 hover:text-white disabled:opacity-40"
+                      >
+                        ← 이전화
+                      </button>
+                      <select
+                        value={currentEpNum}
+                        onChange={(e) => setCurrentEpNum(Number(e.target.value))}
+                        className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs font-bold text-white"
+                      >
+                        {EPISODES_100.map((ep) => (
+                          <option key={ep.epNumber} value={ep.epNumber}>
+                            {ep.title} {ep.isFree ? "(무료)" : "(멤버십)"}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setCurrentEpNum((n) => Math.min(100, n + 1))}
+                        disabled={currentEpNum >= 100}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 border border-gray-800 text-gray-300 hover:text-white disabled:opacity-40"
+                      >
+                        다음화 →
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      {[1, 21, 46, 71, 91].map((startEp, idx) => (
+                        <button
+                          key={startEp}
+                          onClick={() => setCurrentEpNum(startEp)}
+                          className="px-2.5 py-1 rounded-md bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-800"
+                        >
+                          {idx + 1}부 ({startEp}화~)
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {isSeoulMoon && showEpList && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-64 overflow-y-auto pt-3 border-t border-gray-800">
+                    {EPISODES_100.map((ep) => (
+                      <button
+                        key={ep.epNumber}
+                        onClick={() => {
+                          setCurrentEpNum(ep.epNumber);
+                          setShowEpList(false);
+                        }}
+                        className={`text-left p-2 rounded-xl border text-[11px] transition ${
+                          ep.epNumber === currentEpNum
+                            ? "bg-indigo-600/30 border-indigo-500 text-white font-bold"
+                            : "bg-gray-900/80 border-gray-800 text-gray-300 hover:border-gray-600"
+                        }`}
+                      >
+                        <div className="truncate">{ep.title}</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5">
+                          5컷 · {ep.isFree ? "무료" : "멤버십"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </section>
-        )}
+
+              {viewerMode === "cuts" ? (
+                <div className="max-w-2xl mx-auto space-y-4">
+                  {activeCuts.map((cut, i) => (
+                    <div
+                      key={i}
+                      className="bg-gray-900/95 rounded-2xl overflow-hidden border border-gray-800 shadow-xl"
+                    >
+                      {(cut.showImage !== false) && (
+                        <img
+                          src={cut.img}
+                          alt={`웹툰 컷 ${cut.num || i + 1}`}
+                          className="w-full object-cover"
+                        />
+                      )}
+                      <div className="p-4 space-y-2.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-black text-indigo-300 bg-indigo-950/80 border border-indigo-800/70 px-2.5 py-0.5 rounded-full">
+                            CUT {String(cut.num || i + 1).padStart(2, "0")}
+                          </span>
+                          {cut.shot && (
+                            <span className="text-gray-500">{cut.shot}</span>
+                          )}
+                        </div>
+
+                        {cut.scene && (
+                          <p className="text-xs text-gray-300 leading-relaxed">{cut.scene}</p>
+                        )}
+
+                        {cut.narration && (
+                          <div className="bg-amber-50 text-gray-950 text-xs font-bold px-3.5 py-2.5 rounded-lg border-l-4 border-amber-500 shadow">
+                            {cut.narration}
+                          </div>
+                        )}
+
+                        {cut.dialogue && (
+                          <div className="bg-white text-gray-950 text-xs font-bold px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-md inline-block max-w-full whitespace-pre-line">
+                            {cut.dialogue}
+                          </div>
+                        )}
+
+                        {cut.sfx && (
+                          <div className="text-right">
+                            <span className="inline-block text-xs font-black italic text-amber-300 tracking-wider">
+                              {cut.sfx}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {isSeoulMoon && currentEpNum < 100 ? (
+                    <div className="glass-panel rounded-2xl border border-indigo-500/40 p-5 flex items-center justify-between gap-4">
+                      <div className="text-xs text-gray-300">
+                        <strong className="text-white">제{currentEpNum}화</strong> 감상 완료! 다음 화로 이어서 보세요.
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCurrentEpNum((n) => Math.min(100, n + 1));
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shrink-0"
+                      >
+                        제{currentEpNum + 1}화 바로 보기 →
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="glass-panel rounded-2xl border border-amber-500/40 p-6 text-center space-y-3">
+                      <Crown className="w-8 h-8 text-amber-300 mx-auto" />
+                      <h3 className="text-lg font-black text-white">
+                        {isSeoulMoon ? "《달을 비추는 옥탑》 총 100화 완결!" : `${selectedWebtoon.ep2_title} (멤버십 선공개)`}
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        월 2,900원 멤버십으로 작가님을 직접 후원하고 비하인드 콘티를 감상하세요.
+                      </p>
+                      <button
+                        onClick={() => setActiveTab("membership")}
+                        className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs transition"
+                      >
+                        멤버십 요금제 보기
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {activeCuts.map((c, idx) => (
+                    <div
+                      key={idx}
+                      className="glass-panel rounded-2xl border border-gray-800 p-5 space-y-2"
+                    >
+                      <span className="text-xs font-bold text-indigo-400">
+                        컷 {c.num || idx + 1} ({c.shot || "연출"})
+                      </span>
+                      <p className="text-sm text-gray-200">{c.scene || c.caption}</p>
+                      {(c.dialogue || c.narration) && (
+                        <p className="text-xs text-amber-300 bg-gray-900 p-3 rounded-xl border border-gray-800">
+                          {c.dialogue || c.narration}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })()}
 
         {/* TAB: MEMBERSHIP */}
         {activeTab === "membership" && (
