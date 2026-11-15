@@ -1,6 +1,6 @@
-\'use client\';
+'use client';
 
-import React, { useState, useRef } from \'react\';
+import React, { useState, useRef } from 'react';
 
 interface UploadedCut {
   file: File;
@@ -12,7 +12,7 @@ interface Props {
   episodeNumber?: number;
 }
 
-const ALLOWED_TYPES = [\'image/jpeg\', \'image/png\', \'image/webp\'];
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE_MB = 2; // 컷당 최대 2MB
 const MAX_TOTAL_SIZE_MB = 50; // 1회차 총합 최대 50MB
 
@@ -54,7 +54,7 @@ export default function EpisodeUploadForm({ episodeNumber = 1 }: Props) {
     if (validFiles.length === 0) return;
 
     const combinedFiles = [...cuts.map((c) => c.file), ...validFiles].sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: \'base\' })
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     );
 
     const updatedCuts: UploadedCut[] = combinedFiles.map((file, idx) => ({
@@ -75,7 +75,7 @@ export default function EpisodeUploadForm({ episodeNumber = 1 }: Props) {
 
   const handleUploadSubmit = () => {
     if (cuts.length === 0) {
-      alert(\'업로드할 컷 이미지를 최소 1장 이상 선택해주세요.\');
+      alert('업로드할 컷 이미지를 최소 1장 이상 선택해주세요.');
       return;
     }
     setIsUploading(true);
@@ -108,7 +108,7 @@ export default function EpisodeUploadForm({ episodeNumber = 1 }: Props) {
           handleFiles(e.dataTransfer.files);
         }}
         className={`cursor-pointer border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isDragging ? \'border-indigo-600 bg-indigo-50\' : \'border-gray-300 hover:border-indigo-400 bg-gray-50\'
+          isDragging ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400 bg-gray-50'
         }`}
       >
         <input
@@ -186,7 +186,7 @@ export default function EpisodeUploadForm({ episodeNumber = 1 }: Props) {
             onClick={handleUploadSubmit}
             className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm shadow-md transition-colors"
           >
-            {isUploading ? \'업로드 중...\' : `[제 ${episodeNumber}화] 원고 최종 등록하기`}
+            {isUploading ? '업로드 중...' : `[제 ${episodeNumber}화] 원고 최종 등록하기`}
           </button>
         </div>
       )}
