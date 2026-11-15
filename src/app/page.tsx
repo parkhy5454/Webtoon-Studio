@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
+  Home,
   BookOpen,
   Play,
   Crown,
@@ -32,6 +33,9 @@ import {
   Users,
   Trash2,
   User,
+  ArrowRight,
+  Award,
+  Zap,
 } from 'lucide-react';
 import { EPISODES_100 } from '@/lib/episodes-100';
 
@@ -51,7 +55,7 @@ interface Episode {
   [key: string]: unknown;
 }
 
-type TabType = 'intro' | 'viewer' | 'membership' | 'community' | 'settings';
+type TabType = 'home' | 'works' | 'viewer' | 'membership' | 'community' | 'settings';
 type UserRole = 'reader' | 'creator' | 'admin';
 
 interface CommentItem {
@@ -140,8 +144,8 @@ const STORAGE_KEYS = {
 };
 
 export default function WebtoonStudioPage() {
-  // 초기 홈 메인 화면을 'intro'(작품관 & 작품 소개 홈)로 설정
-  const [activeTab, setActiveTab] = useState<TabType>('intro');
+  // 초기 첫 화면은 플랫폼 정체성을 보여주는 'home' 탭
+  const [activeTab, setActiveTab] = useState<TabType>('home');
 
   // 다중 작품(공유 플랫폼) 상태
   const [works, setWorks] = useState<WebtoonWork[]>(INITIAL_WORKS);
@@ -231,7 +235,7 @@ export default function WebtoonStudioPage() {
   // 상단 왼쪽 로고/타이틀 클릭 시 홈 메인 화면으로 이동
   const handleGoHome = () => {
     setIsFullscreen(false);
-    setActiveTab('intro');
+    setActiveTab('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -366,7 +370,6 @@ export default function WebtoonStudioPage() {
           : `${name}님, 일반 회원으로 가입되었습니다!`
       );
     } else {
-      // 기본 관리자 계정 로그인 지원 (admin@webtoon.kr / 2026)
       if (email === 'admin@webtoon.kr' && password === '2026') {
         const adminAccount: UserAccount = {
           id: 'admin-master',
@@ -695,7 +698,7 @@ export default function WebtoonStudioPage() {
                 )}
               </div>
               <p className="text-[11px] text-slate-400 truncate">
-                《{currentWork.title}》 · {currentWork.authorName}
+                오픈 웹툰 창작 &amp; 구독 플랫폼
               </p>
             </div>
           </button>
@@ -767,15 +770,148 @@ export default function WebtoonStudioPage() {
 
       {/* 메인 콘텐츠 영역 */}
       <main className="max-w-3xl mx-auto px-4 pt-5">
-        {/* ==================== 1. 홈 메인 (작품 소개 & 공유 플랫폼 작품관) 탭 ==================== */}
-        {activeTab === 'intro' && (
+        {/* ==================== 1. 홈 탭 (이 앱이 어떤 서비스인지 소개하는 메인 랜딩) ==================== */}
+        {activeTab === 'home' && (
           <div className="space-y-6">
-            {/* 플랫폼 내 등록된 전체 작품 선택 카드 (공유 플랫폼 피드) */}
+            {/* 히어로 브랜드 소개 배너 */}
+            <div className="relative rounded-3xl overflow-hidden border border-indigo-500/30 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-9 shadow-2xl">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-bold border border-amber-400/30 mb-4">
+                <Sparkles className="w-3.5 h-3.5" />
+                누구나 작가가 되는 오픈 웹툰 플랫폼
+              </div>
+
+              <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-snug mb-3">
+                이야기를 그린 순간,
+                <br />
+                <span className="text-amber-400">웹툰스튜디오스</span>에서 연재가 시작됩니다
+              </h1>
+
+              <p className="text-sm sm:text-base text-slate-300 leading-relaxed mb-6 max-w-2xl">
+                웹툰스튜디오스는 독자와 창작자가 직접 만나는 차세대 웹툰 공유·구독 플랫폼입니다.
+                독자는 1~5화 무료 감상 후 멤버십으로 전 작품을 정주행하고, 작가는 복잡한 심사 없이
+                가입 즉시 내 웹툰을 등록해 투명한 수익 배분을 받을 수 있습니다.
+              </p>
+
+              {/* 핵심 CTA 버튼 2종 */}
+              <div className="grid sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('works')}
+                  className="py-3.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm sm:text-base transition flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  연재 작품관 둘러보기
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('settings')}
+                  className="py-3.5 px-5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-sm sm:text-base border border-indigo-400/40 transition flex items-center justify-center gap-2"
+                >
+                  <PenTool className="w-4 h-4" />
+                  작가 등록하고 내 작품 연재하기
+                </button>
+              </div>
+            </div>
+
+            {/* 3대 핵심 가치 카드 */}
+            <div className="grid sm:grid-cols-3 gap-3.5">
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <h2 className="text-sm sm:text-base font-bold text-white">1~5화 누구나 무료</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  모든 연재작의 초반 1~5화를 무료로 감상하고, 마음에 드는 작품은 멤버십으로 완결까지 정주행하세요.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <PenTool className="w-5 h-5" />
+                </div>
+                <h2 className="text-sm sm:text-base font-bold text-white">즉시 오픈 연재 스튜디오</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  회원가입 후 작가 스튜디오에서 작품 타이틀 개설부터 컷 이미지·대사·효과음 업로드까지 한 번에 완료합니다.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center text-amber-400">
+                  <Award className="w-5 h-5" />
+                </div>
+                <h2 className="text-sm sm:text-base font-bold text-white">투명한 작가 4 : 6 정산</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  멤버십 구독 수익의 40%를 연재 작가에게 직접 배분하며, 작가 스튜디오에서 실시간 정산 현황을 제공합니다.
+                </p>
+              </div>
+            </div>
+
+            {/* 대표 오리지널 작품 하이라이트 바로가기 */}
+            <div className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                  FEATURED ORIGINAL · 대표 완결작
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('works')}
+                  className="text-xs font-semibold text-slate-300 hover:text-amber-300 flex items-center gap-1"
+                >
+                  전체 {works.length}편 보기 →
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="w-20 h-24 rounded-xl bg-slate-800 overflow-hidden shrink-0 border border-slate-700 flex items-center justify-center">
+                  {INITIAL_WORKS[0].coverImg ? (
+                    <img
+                      src={INITIAL_WORKS[0].coverImg}
+                      alt={INITIAL_WORKS[0].title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <BookOpen className="w-7 h-7 text-slate-500" />
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 text-[11px] font-bold">
+                      100화 완결
+                    </span>
+                    <span className="text-xs text-slate-400">{INITIAL_WORKS[0].genre}</span>
+                  </div>
+                  <h3 className="text-lg font-extrabold text-white">
+                    {INITIAL_WORKS[0].title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-400 line-clamp-2 leading-relaxed">
+                    {INITIAL_WORKS[0].synopsis}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectWorkAndEpisode('work-dalbit', 1)}
+                  className="w-full sm:w-auto shrink-0 px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5"
+                >
+                  <Play className="w-3.5 h-3.5 fill-slate-950" />
+                  1화 바로보기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== 2. 작품관 탭 (전체 연재작 선택 & 작품 상세 & 회차 목록) ==================== */}
+        {activeTab === 'works' && (
+          <div className="space-y-6">
+            {/* 플랫폼 내 등록된 전체 작품 선택 카드 */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  웹툰스튜디오스 연재 작품관 ({works.length}편)
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-amber-400" />
+                  연재 작품관 ({works.length}편)
                 </h2>
                 <button
                   type="button"
@@ -783,7 +919,7 @@ export default function WebtoonStudioPage() {
                   className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1"
                 >
                   <PlusCircle className="w-3.5 h-3.5" />
-                  작품 연재하기
+                  새 작품 등록
                 </button>
               </div>
 
@@ -844,33 +980,35 @@ export default function WebtoonStudioPage() {
               </div>
             </div>
 
-            {/* 선택된 작품 상세 히어로 카드 */}
-            <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-8">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-semibold border border-amber-400/30 mb-4">
+            {/* 선택된 작품 상세 카드 */}
+            <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-7">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-semibold border border-amber-400/30 mb-3">
                 <Sparkles className="w-3.5 h-3.5" />
                 {currentWork.authorName} · {currentWork.genre}
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-3">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mb-2.5">
                 {currentWork.title}
-              </h1>
-              <p className="text-sm sm:text-base text-slate-300 leading-relaxed mb-6">
+              </h2>
+              <p className="text-sm text-slate-300 leading-relaxed mb-5">
                 {currentWork.synopsis}
               </p>
 
-              <div className="grid grid-cols-3 gap-3 mb-6 text-center">
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <div className="text-xs text-slate-400 mb-1">등록 회차</div>
-                  <div className="text-base sm:text-lg font-bold text-white">
+              <div className="grid grid-cols-3 gap-3 mb-5 text-center">
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[11px] text-slate-400 mb-0.5">등록 회차</div>
+                  <div className="text-sm sm:text-base font-bold text-white">
                     총 {currentWork.episodes.length}화
                   </div>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <div className="text-xs text-slate-400 mb-1">무료 공개</div>
-                  <div className="text-base sm:text-lg font-bold text-emerald-400">1~5화 무료</div>
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[11px] text-slate-400 mb-0.5">무료 공개</div>
+                  <div className="text-sm sm:text-base font-bold text-emerald-400">
+                    1~5화 무료
+                  </div>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <div className="text-xs text-slate-400 mb-1">수익 배분</div>
-                  <div className="text-base sm:text-lg font-bold text-amber-300">작가 4 : 6</div>
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[11px] text-slate-400 mb-0.5">수익 배분</div>
+                  <div className="text-sm sm:text-base font-bold text-amber-300">작가 4 : 6</div>
                 </div>
               </div>
 
@@ -878,7 +1016,7 @@ export default function WebtoonStudioPage() {
                 type="button"
                 disabled={currentWork.episodes.length === 0}
                 onClick={() => handleSelectWorkAndEpisode(currentWork.id, 1)}
-                className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-bold text-sm sm:text-base transition flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-bold text-sm transition flex items-center justify-center gap-2"
               >
                 <Play className="w-4 h-4 fill-slate-950" />
                 {currentWork.episodes.length > 0
@@ -890,9 +1028,9 @@ export default function WebtoonStudioPage() {
             {/* 선택된 작품의 전체 회차 리스트 */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-base sm:text-lg font-bold text-white">
+                <h3 className="text-base font-bold text-white">
                   회차 목록 ({currentWork.episodes.length}화)
-                </h2>
+                </h3>
                 <span className="text-xs text-slate-400">
                   {isAdminReview || currentUser?.role === 'admin'
                     ? '관리자 모드: 전 회차 열람 가능'
@@ -980,7 +1118,7 @@ export default function WebtoonStudioPage() {
           </div>
         )}
 
-        {/* ==================== 2. 웹툰 뷰어 탭 ==================== */}
+        {/* ==================== 3. 웹툰 뷰어 탭 ==================== */}
         {activeTab === 'viewer' && (
           <div className="space-y-5">
             {/* 상단 작품 & 에피소드 컨트롤 바 */}
@@ -1212,7 +1350,7 @@ export default function WebtoonStudioPage() {
           </div>
         )}
 
-        {/* ==================== 3. 멤버십 탭 ==================== */}
+        {/* ==================== 4. 멤버십 탭 ==================== */}
         {activeTab === 'membership' && (
           <div className="space-y-6">
             <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-500/20 via-slate-900 to-indigo-950 border border-amber-400/30">
@@ -1281,7 +1419,7 @@ export default function WebtoonStudioPage() {
           </div>
         )}
 
-        {/* ==================== 4. 커뮤니티 탭 ==================== */}
+        {/* ==================== 5. 커뮤니티 탭 ==================== */}
         {activeTab === 'community' && (
           <div className="space-y-5">
             <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
@@ -1334,7 +1472,7 @@ export default function WebtoonStudioPage() {
           </div>
         )}
 
-        {/* ==================== 5. 설정 탭 (일반 독자 · 작가 · 관리자 통합 계정 & 작가 스튜디오) ==================== */}
+        {/* ==================== 6. 설정 탭 (일반 독자 · 작가 · 관리자 통합 계정 & 작가 스튜디오) ==================== */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
             {/* (A) 통합 회원 / 작가 / 관리자 계정 관리 */}
@@ -2076,61 +2214,72 @@ export default function WebtoonStudioPage() {
         </div>
       )}
 
-      {/* ==================== 하단 고정 탭바 (5개 메뉴) ==================== */}
+      {/* ==================== 하단 고정 탭바 (6개 균등 배치: 홈 · 작품관 · 뷰어 · 멤버십 · 커뮤니티 · 설정) ==================== */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800">
-        <div className="max-w-3xl mx-auto grid grid-cols-5 h-16">
+        <div className="max-w-3xl mx-auto grid grid-cols-6 h-16">
           <button
             type="button"
-            onClick={() => setActiveTab('intro')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
-              activeTab === 'intro' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            onClick={() => setActiveTab('home')}
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'home' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <BookOpen className="w-5 h-5" />
-            <span>홈 · 작품관</span>
+            <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>홈</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('works')}
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'works' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>작품관</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('viewer')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
               activeTab === 'viewer' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Play className="w-5 h-5" />
-            <span>웹툰 뷰어</span>
+            <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>뷰어</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('membership')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
               activeTab === 'membership' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Crown className="w-5 h-5" />
+            <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>멤버십</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('community')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
               activeTab === 'community' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <MessageSquare className="w-5 h-5" />
+            <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>커뮤니티</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('settings')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
               activeTab === 'settings' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Settings className="w-5 h-5" />
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>설정</span>
           </button>
         </div>
