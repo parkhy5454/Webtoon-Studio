@@ -1,1092 +1,994 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   BookOpen,
-  PlaySquare,
+  Play,
   Crown,
   MessageSquare,
   Settings,
   Lock,
   Unlock,
-  ShieldCheck,
-  ShieldAlert,
-  CheckCircle2,
-  X,
-  CreditCard,
-  Eye,
-  Sparkles,
-  LogOut,
   ChevronLeft,
   ChevronRight,
+  Maximize2,
+  X,
+  ShieldCheck,
+  Sparkles,
   Heart,
-  Send,
-  Star,
-  Calendar,
+  Share2,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  Volume2,
   Layers,
-} from "lucide-react";
-import { EPISODES_100 } from "@/lib/episodes-100";
+} from 'lucide-react';
+import { EPISODES_100, Episode, EpisodeCut } from '@/lib/episodes-100';
 
-type TabType = "intro" | "viewer" | "membership" | "community" | "settings";
+type TabType = 'intro' | 'viewer' | 'membership' | 'community' | 'settings';
 
-interface Episode {
-  id: number;
-  title: string;
-  subtitle: string;
-  part: string;
-  releaseDate: string;
-  isFree: boolean;
-  cutsCount: number;
-  thumbnailColor: string;
-}
-
-interface CommunityPost {
-  id: number;
+interface CommentItem {
+  id: string;
   author: string;
-  badge: string;
+  episode: number;
   content: string;
-  createdAt: string;
   likes: number;
-  liked?: boolean;
+  createdAt: string;
+  isBest?: boolean;
 }
 
-const TOTAL_EPISODES = EPISODES_100.length;
-const ADMIN_DEFAULT_PIN = "2026";
-
-const COLORS = [
-  "from-indigo-600 to-purple-700",
-  "from-emerald-600 to-teal-700",
-  "from-rose-600 to-orange-700",
-  "from-sky-600 to-blue-700",
-  "from-amber-600 to-red-700",
-];
-
-const EPISODES: Episode[] = EPISODES_100.map((ep, idx) => ({
-  id: ep.epNumber,
-  title: `제 ${ep.epNumber}화`,
-  subtitle: ep.title.replace(/^제\d+화:\s*/, ""),
-  part: ep.part,
-  releaseDate: `2026.${String(((ep.epNumber - 1) % 12) + 1).padStart(2, "0")}.${String(
-    ((ep.epNumber * 3) % 28) + 1
-  ).padStart(2, "0")}`,
-  isFree: ep.isFree,
-  cutsCount: ep.cuts.length,
-  thumbnailColor: COLORS[idx % COLORS.length],
-}));
-
-const INITIAL_POSTS: CommunityPost[] = [
+const INITIAL_COMMENTS: CommentItem[] = [
   {
-    id: 1,
-    author: "달빛산책자",
-    badge: "멤버십 구독자",
-    content: "1화 연출 몰입감 미쳤네요... 6화부터 멤버십 결제하고 밤새 정주행 중입니다!",
-    createdAt: "2시간 전",
-    likes: 42,
+    id: 'c1',
+    author: '옥탑방달빛',
+    episode: 1,
+    content: '1화 첫 컷에서 옥탑방 난간 너머로 서울 야경 펼쳐질 때 소름 돋았어요. 작화 분위기가 미쳤습니다!',
+    likes: 142,
+    createdAt: '2시간 전',
+    isBest: true,
   },
   {
-    id: 2,
-    author: "스튜디오PD",
-    badge: "제작진",
-    content: "전체 100화 완결 아카이브가 오픈되었습니다. 1~5화는 무료로 감상하실 수 있습니다.",
-    createdAt: "1일 전",
+    id: 'c2',
+    author: '망원동고양이',
+    episode: 3,
+    content: '서준이랑 하은이 옥상 빨랫줄 사이로 마주 보는 연출 진짜 영화 같아요. 다음 화 결제하러 갑니다.',
     likes: 89,
+    createdAt: '5시간 전',
+    isBest: true,
   },
   {
-    id: 3,
-    author: "서울야경",
-    badge: "독자",
-    content: "90년대 감성이랑 현대 배경이 너무 잘 어울려요. 100화 완결까지 응원합니다.",
-    createdAt: "3일 전",
-    likes: 27,
+    id: 'c3',
+    author: '새벽감성러',
+    episode: 5,
+    content: '5화 엔딩 대사 보고 잠 못 자는 중... 6화부터 멤버십 바로 질렀습니다!',
+    likes: 64,
+    createdAt: '1일 전',
   },
 ];
 
-export default function ToonStudiosPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("intro");
+export default function WebtoonStudioPage() {
+  const [activeTab, setActiveTab] = useState<TabType>('viewer');
+  const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [fullscreenCutIndex, setFullscreenCutIndex] = useState<number>(0);
+
+  // 멤버십 & 관리자 검수 모드 상태
   const [isMember, setIsMember] = useState<boolean>(false);
-  const [isAdminReviewMode, setIsAdminReviewMode] = useState<boolean>(false);
+  const [isAdminReview, setIsAdminReview] = useState<boolean>(false);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  const [adminError, setAdminError] = useState<string>('');
+  const [adminSuccessMsg, setAdminSuccessMsg] = useState<string>('');
 
-  const [pinInput, setPinInput] = useState<string>("");
-  const [pinError, setPinError] = useState<string>("");
+  // 좋아요 & 북마크
+  const [likedEpisodes, setLikedEpisodes] = useState<number[]>([1]);
+  const [comments, setComments] = useState<CommentItem[]>(INITIAL_COMMENTS);
+  const [newComment, setNewComment] = useState<string>('');
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
-  const [pendingEpisode, setPendingEpisode] = useState<Episode | null>(null);
-  const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
-  const [paymentSuccessToast, setPaymentSuccessToast] = useState<boolean>(false);
-
-  const [selectedEpisode, setSelectedEpisode] = useState<Episode>(EPISODES[0]);
-  const [isReaderOpen, setIsReaderOpen] = useState<boolean>(false);
-  const [episodeFilter, setEpisodeFilter] = useState<"all" | "free" | "locked">("all");
-
-  const [posts, setPosts] = useState<CommunityPost[]>(INITIAL_POSTS);
-  const [newPostContent, setNewPostContent] = useState<string>("");
-
-  useEffect(() => {
-    try {
-      const savedMember = localStorage.getItem("ts_is_member");
-      const savedAdmin = localStorage.getItem("ts_is_admin_review");
-      if (savedMember === "true") setIsMember(true);
-      if (savedAdmin === "true") setIsAdminReviewMode(true);
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
-
-  const updateMembership = (status: boolean) => {
-    setIsMember(status);
-    try {
-      localStorage.setItem("ts_is_member", String(status));
-    } catch {
-      // ignore
-    }
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2800);
   };
 
-  const updateAdminReviewMode = (status: boolean) => {
-    setIsAdminReviewMode(status);
-    try {
-      localStorage.setItem("ts_is_admin_review", String(status));
-    } catch {
-      // ignore
-    }
-  };
+  // 현재 선택된 에피소드 데이터
+  const currentEpisode: Episode =
+    EPISODES_100.find((ep) => ep.num === selectedEpisodeNum) || EPISODES_100[0];
 
-  const canAccessEpisode = (ep: Episode) => {
-    if (ep.isFree) return true;
-    if (isMember) return true;
-    if (isAdminReviewMode) return true;
+  // 열람 가능 여부 (1~5화 무료, 멤버십 보유자 또는 관리자 검수 모드 시 전체 잠금 해제)
+  const canAccessEpisode = (epNum: number) => {
+    if (epNum <= 5) return true;
+    if (isMember || isAdminReview) return true;
     return false;
   };
 
-  const handleOpenEpisode = (ep: Episode) => {
-    if (canAccessEpisode(ep)) {
-      setSelectedEpisode(ep);
-      setActiveTab("viewer");
-      setIsReaderOpen(true);
-    } else {
-      setPendingEpisode(ep);
-      setShowPaymentModal(true);
-    }
-  };
+  const isCurrentAccessible = canAccessEpisode(currentEpisode.num);
 
-  const handleCompletePayment = () => {
-    setIsProcessingPayment(true);
-    setTimeout(() => {
-      updateMembership(true);
-      setIsProcessingPayment(false);
-      setShowPaymentModal(false);
-      setPaymentSuccessToast(true);
-      if (pendingEpisode) {
-        setSelectedEpisode(pendingEpisode);
-        setActiveTab("viewer");
-        setIsReaderOpen(true);
-        setPendingEpisode(null);
+  // 키보드 방향키로 전체화면 리더 이동
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFullscreen(false);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        setFullscreenCutIndex((prev) =>
+          Math.min(prev + 1, (currentEpisode.cuts?.length || 1) - 1)
+        );
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        setFullscreenCutIndex((prev) => Math.max(prev - 1, 0));
       }
-      setTimeout(() => setPaymentSuccessToast(false), 4000);
-    }, 800);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen, currentEpisode]);
+
+  const handleSelectEpisode = (epNum: number) => {
+    setSelectedEpisodeNum(epNum);
+    setFullscreenCutIndex(0);
+    setActiveTab('viewer');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleAdminPinSubmit = (e: React.FormEvent) => {
+  const handleAdminUnlock = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput.trim() === ADMIN_DEFAULT_PIN) {
-      updateAdminReviewMode(true);
-      setPinInput("");
-      setPinError("");
+    if (adminPinInput.trim() === '2026') {
+      setIsAdminReview(true);
+      setAdminError('');
+      setAdminSuccessMsg('관리자 검수 모드가 활성화되었습니다. 1~100화 전체 열람이 가능합니다.');
+      setAdminPinInput('');
+      showToast('관리자 검수 모드 ON (전체 100화 잠금 해제)');
     } else {
-      setPinError("PIN 번호가 일치하지 않습니다. (기본 PIN: 2026)");
+      setAdminError('PIN 번호가 일치하지 않습니다. (기본 PIN: 2026)');
+      setAdminSuccessMsg('');
     }
   };
 
-  const handleDisableAdminMode = () => {
-    updateAdminReviewMode(false);
-    setPinInput("");
-    setPinError("");
+  const handleAdminDisable = () => {
+    setIsAdminReview(false);
+    setAdminSuccessMsg('');
+    showToast('관리자 검수 모드가 해제되었습니다.');
   };
 
-  const handleAddPost = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPostContent.trim()) return;
-    const badge = isAdminReviewMode
-      ? "관리자(검수)"
-      : isMember
-      ? "멤버십 구독자"
-      : "일반 독자";
-    const newPost: CommunityPost = {
-      id: Date.now(),
-      author: isAdminReviewMode ? "스튜디오 관리자" : "독자 회원",
-      badge,
-      content: newPostContent.trim(),
-      createdAt: "방금 전",
-      likes: 1,
-      liked: true,
-    };
-    setPosts([newPost, ...posts]);
-    setNewPostContent("");
+  const handleSubscribe = (planName: string) => {
+    setIsMember(true);
+    showToast(`${planName} 구독이 완료되었습니다! 전 회차 무제한 감상이 가능합니다.`);
+    setActiveTab('viewer');
   };
 
-  const toggleLike = (id: number) => {
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === id
-          ? {
-              ...post,
-              liked: !post.liked,
-              likes: post.liked ? post.likes - 1 : post.likes + 1,
-            }
-          : post
-      )
+  const toggleLike = (epNum: number) => {
+    setLikedEpisodes((prev) =>
+      prev.includes(epNum) ? prev.filter((n) => n !== epNum) : [...prev, epNum]
     );
   };
 
-  const filteredEpisodes = EPISODES.filter((ep) => {
-    if (episodeFilter === "free") return ep.isFree;
-    if (episodeFilter === "locked") return !canAccessEpisode(ep);
-    return true;
-  });
+  const handleAddComment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    const item: CommentItem = {
+      id: `c-${Date.now()}`,
+      author: isAdminReview ? '웹툰스튜디오스_PD' : '독자_달빛러버',
+      episode: currentEpisode.num,
+      content: newComment.trim(),
+      likes: 1,
+      createdAt: '방금 전',
+    };
+    setComments([item, ...comments]);
+    setNewComment('');
+    showToast('댓글이 등록되었습니다.');
+  };
 
-  const activeCuts =
-    EPISODES_100.find((ep) => ep.epNumber === selectedEpisode.id)?.cuts ?? [];
+  // 컷 렌더링 헬퍼 (일반 뷰어 & 전체화면 리더 공용 스타일)
+  const renderCutVisual = (cut: EpisodeCut, idx: number, isReaderMode = false) => {
+    const hasValidImage = Boolean(cut.img && cut.img.trim().length > 0);
 
-  const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: "intro", label: "작품 소개", icon: <BookOpen className="w-5 h-5" /> },
-    { id: "viewer", label: "웹툰 뷰어", icon: <PlaySquare className="w-5 h-5" /> },
-    { id: "membership", label: "멤버십", icon: <Crown className="w-5 h-5" /> },
-    { id: "community", label: "커뮤니티", icon: <MessageSquare className="w-5 h-5" /> },
-    { id: "settings", label: "설정", icon: <Settings className="w-5 h-5" /> },
-  ];
+    return (
+      <div
+        key={`${currentEpisode.num}-cut-${idx}`}
+        className={`relative w-full overflow-hidden bg-slate-900 border border-slate-800/80 ${
+          isReaderMode ? 'rounded-xl shadow-2xl' : 'rounded-2xl shadow-lg'
+        }`}
+      >
+        {/* 컷 상단 번호 & 효과음(SFX) 오버레이 */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/90 border-b border-slate-800/80">
+          <span className="text-xs font-semibold tracking-wider text-amber-400/90 uppercase">
+            CUT {String(idx + 1).padStart(2, '0')} / {String(currentEpisode.cuts?.length || 5).padStart(2, '0')}
+          </span>
+          {cut.sfx && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <Volume2 className="w-3 h-3 text-indigo-400" />
+              {cut.sfx}
+            </span>
+          )}
+        </div>
 
-  const renderCutList = () => (
-    <div className="space-y-4">
-      {activeCuts.map((cut, idx) => (
-        <div
-          key={idx}
-          className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-lg"
-        >
-          {cut.showImage !== false && cut.img && (
+        {/* 실제 컷 이미지 영역 */}
+        <div className="relative w-full bg-slate-950 flex items-center justify-center">
+          {hasValidImage ? (
             <img
               src={cut.img}
-              alt={`${selectedEpisode.title} 컷 ${cut.num || idx + 1}`}
-              className="w-full object-cover"
+              alt={`${currentEpisode.num}화 ${idx + 1}컷 - ${cut.scene || ''}`}
+              className={`w-full object-contain select-none ${
+                isReaderMode ? 'max-h-[68vh]' : 'max-h-[640px]'
+              }`}
+              loading="lazy"
             />
-          )}
-          <div className="p-4 space-y-2.5">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="font-bold text-violet-300 bg-violet-950/80 border border-violet-700/60 px-2.5 py-0.5 rounded-full">
-                CUT #{cut.num || idx + 1} / {activeCuts.length}
-              </span>
-              {cut.shot && <span className="text-slate-500">{cut.shot}</span>}
+          ) : (
+            <div className="w-full py-20 px-6 flex flex-col items-center justify-center text-center bg-gradient-to-b from-slate-900 to-slate-950">
+              <Layers className="w-10 h-10 text-slate-600 mb-3" />
+              <p className="text-sm text-slate-400">이미지 리소스 준비 중 ({idx + 1}컷)</p>
             </div>
+          )}
 
-            {cut.scene && (
-              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                {cut.scene}
-              </p>
-            )}
-
-            {cut.narration && (
-              <div className="bg-amber-50 text-slate-950 text-xs font-bold px-3.5 py-2.5 rounded-lg border-l-4 border-amber-500 shadow">
-                {cut.narration}
-              </div>
-            )}
-
-            {cut.dialogue && (
-              <div className="bg-white text-slate-950 text-xs font-bold px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-md inline-block max-w-full whitespace-pre-line">
-                {cut.dialogue}
-              </div>
-            )}
-
-            {cut.sfx && (
-              <div className="text-right">
-                <span className="inline-block text-xs font-black italic text-amber-300 tracking-wider">
-                  {cut.sfx}
-                </span>
-              </div>
-            )}
-          </div>
+          {/* 전체화면 확대 버튼 (일반 뷰어일 때만 우측 상단 노출) */}
+          {!isReaderMode && (
+            <button
+              type="button"
+              onClick={() => {
+                setFullscreenCutIndex(idx);
+                setIsFullscreen(true);
+              }}
+              className="absolute top-3 right-3 p-2 rounded-lg bg-slate-950/75 hover:bg-slate-900 text-slate-200 border border-slate-700/70 backdrop-blur-sm transition"
+              title="이 컷부터 전체화면 리더로 보기"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
-      ))}
-    </div>
-  );
+
+        {/* 장면 설명(scene), 내레이션(narration), 대사(dialogue) 패널 */}
+        <div className="p-4 sm:p-5 space-y-3 bg-gradient-to-b from-slate-900/95 to-slate-950">
+          {/* 장면 연출 설명 */}
+          {cut.scene && (
+            <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-400 leading-relaxed">
+              <span className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium text-[11px]">
+                장면
+              </span>
+              <p>{cut.scene}</p>
+            </div>
+          )}
+
+          {/* 내레이션 박스 */}
+          {cut.narration && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border-l-4 border-amber-400 text-amber-100/95 text-sm sm:text-base italic leading-relaxed">
+              {cut.narration}
+            </div>
+          )}
+
+          {/* 캐릭터 대사 말풍선 */}
+          {cut.dialogue && (
+            <div className="p-3.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-white text-sm sm:text-base font-medium leading-relaxed shadow-inner">
+              <span className="block text-[11px] font-semibold text-indigo-300 mb-1">
+                대사
+              </span>
+              “{cut.dialogue}”
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 pb-24">
-      {/* Top Sticky Header */}
-      <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-slate-900/95 backdrop-blur-md">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center font-extrabold text-sm text-white shrink-0">
-              TS
+    <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
+      {/* 상단 고정 헤더 */}
+      <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
+        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-indigo-600 flex items-center justify-center text-slate-950 font-black text-sm shadow">
+              달
             </div>
-            <h1 className="font-bold text-base sm:text-lg tracking-tight text-white truncate">
-              웹툰스튜디오스
-            </h1>
-
-            {isAdminReviewMode && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 animate-pulse">
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                관리자 검수중
-              </span>
-            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm sm:text-base tracking-tight text-white">
+                  웹툰스튜디오스
+                </span>
+                {isAdminReview && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                    <ShieldCheck className="w-3 h-3" />
+                    관리자 검수중
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">《달을 비추는 옥탑》 · 총 100화</p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2">
             {isMember ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                <Crown className="w-3 h-3 text-emerald-400" />
-                멤버십 활성
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <Crown className="w-3.5 h-3.5" />
+                멤버십
               </span>
             ) : (
               <button
-                onClick={() => setActiveTab("membership")}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-violet-600/90 hover:bg-violet-500 text-white transition"
+                type="button"
+                onClick={() => setActiveTab('membership')}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-400 hover:bg-amber-300 text-slate-950 transition"
               >
-                <Crown className="w-3 h-3" />
-                멤버십
+                전편 잠금해제
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Payment Toast */}
-      {paymentSuccessToast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-950/95 border border-emerald-500/50 text-emerald-100 shadow-2xl">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          <div className="text-xs sm:text-sm">
-            <p className="font-bold">멤버십 결제가 완료되었습니다!</p>
-            <p className="text-emerald-300 text-xs">
-              6~100화 모든 유료 회차 잠금이 자동 해제되었습니다.
-            </p>
-          </div>
+      {/* 토스트 알림 */}
+      {toastMsg && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-slate-800 text-white text-xs sm:text-sm font-medium border border-slate-700 shadow-xl flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMsg}</span>
         </div>
       )}
 
-      {/* Main Content Container */}
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-5">
-        {/* TAB 1: 작품 소개 */}
-        {activeTab === "intro" && (
+      {/* 메인 콘텐츠 영역 */}
+      <main className="max-w-3xl mx-auto px-4 pt-5">
+        {/* ==================== 1. 작품 소개 탭 ==================== */}
+        {activeTab === 'intro' && (
           <div className="space-y-6">
-            <section className="rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-slate-900 via-indigo-950/70 to-slate-900 p-5 sm:p-6 space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  오리지널 완결작
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                  1~5화 무료 · 6~100화 멤버십
-                </span>
+            <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-8">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-semibold border border-amber-400/30 mb-4">
+                <Sparkles className="w-3.5 h-3.5" />
+                웹툰스튜디오스 오리지널 · 완결 100화
               </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-3">
+                달을 비추는 옥탑
+              </h1>
+              <p className="text-sm sm:text-base text-slate-300 leading-relaxed mb-6">
+                서울의 가장 낮은 골목 끝, 달빛만이 유일한 조명인 오래된 옥탑방.
+                각자의 상처를 숨긴 채 옥상 난간을 마주한 두 청춘이 써 내려가는 100일간의 야경 로맨스 드라마.
+              </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-                <div className="sm:col-span-7 space-y-2">
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                    달을 비추는 옥탑
-                  </h2>
-                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                    1994년 명작 《서울의 달》을 2026년 현대판 코인, 배달 라이더, 청년 주거 현실로
-                    재해석한 청춘 군상극. 총 100화 완결 전편이 공개되었습니다.
-                  </p>
+              <div className="grid grid-cols-3 gap-3 mb-6 text-center">
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-xs text-slate-400 mb-1">총 회차</div>
+                  <div className="text-base sm:text-lg font-bold text-white">100화 완결</div>
                 </div>
-                <div className="sm:col-span-5">
-                  <img
-                    src="/images/poster-seoul-moon.jpg"
-                    alt="달을 비추는 옥탑 대표 포스터"
-                    className="w-full h-48 object-cover rounded-xl border border-slate-700 shadow-lg"
-                  />
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-xs text-slate-400 mb-1">무료 공개</div>
+                  <div className="text-base sm:text-lg font-bold text-emerald-400">1~5화 무료</div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2.5 pt-1">
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-center">
-                  <div className="flex items-center justify-center gap-1 text-amber-400 font-bold text-sm">
-                    <Star className="w-4 h-4 fill-amber-400" />
-                    9.94
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">독자 평점</p>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-center">
-                  <div className="flex items-center justify-center gap-1 text-white font-bold text-sm">
-                    <Layers className="w-4 h-4 text-violet-400" />
-                    총 {TOTAL_EPISODES}화
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">완결 아카이브</p>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-center">
-                  <div className="flex items-center justify-center gap-1 text-emerald-300 font-bold text-sm">
-                    <Calendar className="w-4 h-4 text-emerald-400" />
-                    1~5화 무료
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">즉시 감상</p>
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-xs text-slate-400 mb-1">회당 구성</div>
+                  <div className="text-base sm:text-lg font-bold text-amber-300">고화질 5컷</div>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
-                <button
-                  onClick={() => handleOpenEpisode(EPISODES[0])}
-                  className="flex-1 py-3 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-sm shadow-lg shadow-violet-600/25 transition flex items-center justify-center gap-2"
-                >
-                  <PlaySquare className="w-4 h-4" />
-                  1화 무료 첫화보기
-                </button>
-                {!isMember && !isAdminReviewMode && (
-                  <button
-                    onClick={() => {
-                      setPendingEpisode(EPISODES[5]);
-                      setShowPaymentModal(true);
-                    }}
-                    className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-semibold text-sm transition flex items-center justify-center gap-2"
-                  >
-                    <Crown className="w-4 h-4 text-amber-400" />
-                    6~100화 잠금 해제
-                  </button>
-                )}
-              </div>
-            </section>
+              <button
+                type="button"
+                onClick={() => handleSelectEpisode(1)}
+                className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm sm:text-base transition flex items-center justify-center gap-2"
+              >
+                <Play className="w-4 h-4 fill-slate-950" />
+                제 1화 첫 화부터 감상하기
+              </button>
+            </div>
 
-            {/* Episode List Section */}
-            <section className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setEpisodeFilter("all")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                      episodeFilter === "all"
-                        ? "bg-slate-800 text-white border-slate-600"
-                        : "bg-slate-900 text-slate-400 border-slate-800"
-                    }`}
-                  >
-                    전체 ({TOTAL_EPISODES})
-                  </button>
-                  <button
-                    onClick={() => setEpisodeFilter("free")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                      episodeFilter === "free"
-                        ? "bg-slate-800 text-white border-slate-600"
-                        : "bg-slate-900 text-slate-400 border-slate-800"
-                    }`}
-                  >
-                    무료 (1~5화)
-                  </button>
-                  <button
-                    onClick={() => setEpisodeFilter("locked")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                      episodeFilter === "locked"
-                        ? "bg-slate-800 text-white border-slate-600"
-                        : "bg-slate-900 text-slate-400 border-slate-800"
-                    }`}
-                  >
-                    잠금 ({EPISODES.filter((ep) => !canAccessEpisode(ep)).length})
-                  </button>
-                </div>
-
+            {/* 전체 회차 리스트 (1~100화) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base sm:text-lg font-bold text-white">
+                  전체 회차 목록 ({EPISODES_100.length}화)
+                </h2>
                 <span className="text-xs text-slate-400">
-                  열람 가능{" "}
-                  <strong className="text-white">
-                    {EPISODES.filter((ep) => canAccessEpisode(ep)).length}
-                  </strong>
-                  /{TOTAL_EPISODES}화
+                  {isAdminReview
+                    ? '관리자 검수 모드: 전 회차 열람 가능'
+                    : isMember
+                    ? '멤버십 회원: 전 회차 열람 가능'
+                    : '1~5화 무료 / 6~100화 멤버십'}
                 </span>
               </div>
 
-              <div className="space-y-2">
-                {filteredEpisodes.map((ep) => {
-                  const unlocked = canAccessEpisode(ep);
+              <div className="divide-y divide-slate-800/80 rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+                {EPISODES_100.map((ep) => {
+                  const unlocked = canAccessEpisode(ep.num);
+                  const thumb = ep.cuts?.[0]?.img;
+
                   return (
                     <button
-                      key={ep.id}
-                      onClick={() => handleOpenEpisode(ep)}
-                      className={`w-full text-left p-3 rounded-xl border transition flex items-center gap-3.5 ${
-                        unlocked
-                          ? "bg-slate-900/90 border-slate-800 hover:border-slate-600"
-                          : "bg-slate-900/40 border-slate-800/70 hover:border-violet-500/40"
-                      }`}
+                      key={ep.num}
+                      type="button"
+                      onClick={() => handleSelectEpisode(ep.num)}
+                      className="w-full flex items-center justify-between p-3.5 hover:bg-slate-800/70 transition text-left"
                     >
-                      <div
-                        className={`relative w-14 h-14 rounded-lg bg-gradient-to-br ${ep.thumbnailColor} flex flex-col items-center justify-center shrink-0 overflow-hidden`}
-                      >
-                        <span className="text-xs font-bold text-white">EP.{ep.id}</span>
-                        <span className="text-[10px] text-white/80">{ep.cutsCount}컷</span>
-                        {!unlocked && (
-                          <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center">
-                            <Lock className="w-4 h-4 text-slate-200" />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="font-bold text-sm text-white">{ep.title}</span>
-                          {ep.isFree ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                              무료
-                            </span>
-                          ) : isAdminReviewMode && !isMember ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                              검수 해제
-                            </span>
-                          ) : isMember ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              멤버십 해제
-                            </span>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-16 h-12 rounded-lg bg-slate-800 overflow-hidden shrink-0 border border-slate-700/70 flex items-center justify-center">
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt={`${ep.num}화 썸네일`}
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                              멤버십 잠금
-                            </span>
+                            <span className="text-xs font-bold text-slate-400">{ep.num}화</span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-300 truncate">{ep.subtitle}</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{ep.part}</p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-400">
+                              제 {ep.num}화
+                            </span>
+                            {ep.num <= 5 && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                                무료
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm font-semibold text-white truncate mt-0.5">
+                            {ep.title}
+                          </p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {ep.cuts?.length || 5}컷 수록
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="shrink-0 text-slate-400">
+                      <div className="shrink-0 ml-3">
                         {unlocked ? (
-                          <Eye className="w-4 h-4 text-violet-400" />
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-300">
+                            <Eye className="w-3.5 h-3.5 text-amber-400" />
+                            보기
+                          </span>
                         ) : (
-                          <Lock className="w-4 h-4" />
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-800 text-slate-400 text-xs">
+                            <Lock className="w-3 h-3" />
+                            잠금
+                          </span>
                         )}
                       </div>
                     </button>
                   );
                 })}
               </div>
-            </section>
+            </div>
           </div>
         )}
 
-        {/* TAB 2: 웹툰 뷰어 */}
-        {activeTab === "viewer" && (
-          <div className="space-y-4">
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-2">
-              <button
-                disabled={selectedEpisode.id <= 1}
-                onClick={() => {
-                  const prev = EPISODES[selectedEpisode.id - 2];
-                  if (prev) handleOpenEpisode(prev);
-                }}
-                className="px-3 py-2 rounded-xl bg-slate-800 disabled:opacity-40 hover:bg-slate-700 text-xs font-semibold flex items-center gap-1"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                이전화
-              </button>
-
-              <div className="text-center min-w-0">
-                <p className="font-bold text-sm text-white truncate">
-                  {selectedEpisode.title}
-                </p>
-                <p className="text-[11px] text-slate-400 truncate">
-                  {selectedEpisode.subtitle}
-                </p>
-              </div>
-
-              <button
-                disabled={selectedEpisode.id >= TOTAL_EPISODES}
-                onClick={() => {
-                  const next = EPISODES[selectedEpisode.id];
-                  if (next) handleOpenEpisode(next);
-                }}
-                className="px-3 py-2 rounded-xl bg-slate-800 disabled:opacity-40 hover:bg-slate-700 text-xs font-semibold flex items-center gap-1"
-              >
-                다음화
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Quick Episode Selector */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {[1, 2, 3, 4, 5, 6, 10, 25, 50, 100].map((num) => {
-                const ep = EPISODES[num - 1];
-                if (!ep) return null;
-                const unlocked = canAccessEpisode(ep);
-                const isCurrent = selectedEpisode.id === num;
-                return (
-                  <button
-                    key={num}
-                    onClick={() => handleOpenEpisode(ep)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border shrink-0 flex items-center gap-1 transition ${
-                      isCurrent
-                        ? "bg-violet-600 text-white border-violet-500"
-                        : unlocked
-                        ? "bg-slate-900 text-slate-200 border-slate-700 hover:border-slate-500"
-                        : "bg-slate-900/50 text-slate-400 border-slate-800"
-                    }`}
-                  >
-                    {!unlocked && <Lock className="w-3 h-3 text-amber-400" />}
-                    {num}화
-                  </button>
-                );
-              })}
-            </div>
-
-            {canAccessEpisode(selectedEpisode) ? (
-              <div className="space-y-4">
-                <div
-                  className={`p-6 rounded-2xl bg-gradient-to-br ${selectedEpisode.thumbnailColor} text-center space-y-1.5 shadow-lg`}
-                >
-                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-black/30 text-white">
-                    {selectedEpisode.isFree
-                      ? "무료 공개 회차"
-                      : isAdminReviewMode
-                      ? "관리자 검수 모드 열람중"
-                      : "멤버십 인증 열람중"}
-                  </span>
-                  <h3 className="text-xl font-extrabold text-white">
-                    {selectedEpisode.title}
-                  </h3>
-                  <p className="text-xs text-white/90">
-                    {selectedEpisode.subtitle} · 총 {selectedEpisode.cutsCount}컷
-                  </p>
+        {/* ==================== 2. 웹툰 뷰어 탭 ==================== */}
+        {activeTab === 'viewer' && (
+          <div className="space-y-5">
+            {/* 상단 에피소드 컨트롤 바 */}
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-400">
+                      제 {currentEpisode.num}화 / 100화
+                    </span>
+                    {currentEpisode.num <= 5 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                        무료 공개
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300">
+                        멤버십 전용
+                      </span>
+                    )}
+                  </div>
+                  <h1 className="text-lg sm:text-xl font-bold text-white truncate mt-1">
+                    {currentEpisode.title}
+                  </h1>
                 </div>
 
-                {renderCutList()}
+                {/* 전체화면 리더 실행 버튼 */}
+                {isCurrentAccessible && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFullscreenCutIndex(0);
+                      setIsFullscreen(true);
+                    }}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold transition shadow"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                    전체화면 리더
+                  </button>
+                )}
+              </div>
+
+              {/* 회차 빠른 선택 드롭다운 & 이전/다음 버튼 */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={currentEpisode.num <= 1}
+                  onClick={() => handleSelectEpisode(currentEpisode.num - 1)}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 transition"
+                  title="이전 화"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <select
+                  value={currentEpisode.num}
+                  onChange={(e) => handleSelectEpisode(Number(e.target.value))}
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-400"
+                >
+                  {EPISODES_100.map((ep) => (
+                    <option key={ep.num} value={ep.num}>
+                      제 {ep.num}화 - {ep.title} {ep.num <= 5 ? '(무료)' : canAccessEpisode(ep.num) ? '(열람가능)' : '(멤버십)'}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  disabled={currentEpisode.num >= EPISODES_100.length}
+                  onClick={() => handleSelectEpisode(currentEpisode.num + 1)}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 transition"
+                  title="다음 화"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* 본문 컷 렌더링 영역 (잠금 여부에 따라 분기) */}
+            {isCurrentAccessible ? (
+              <div className="space-y-6">
+                {currentEpisode.cuts && currentEpisode.cuts.length > 0 ? (
+                  currentEpisode.cuts.map((cut, idx) => renderCutVisual(cut, idx, false))
+                ) : (
+                  <div className="p-12 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-400">
+                    이 회차에 등록된 컷 데이터가 없습니다.
+                  </div>
+                )}
+
+                {/* 에피소드 하단 인터랙션 및 다음 화 이동 */}
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => toggleLike(currentEpisode.num)}
+                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${
+                        likedEpisodes.includes(currentEpisode.num)
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      <Heart
+                        className={`w-4 h-4 ${
+                          likedEpisodes.includes(currentEpisode.num) ? 'fill-rose-400 text-rose-400' : ''
+                        }`}
+                      />
+                      좋아요 {likedEpisodes.includes(currentEpisode.num) ? '완료' : ''}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(window.location.href);
+                        showToast('작품 링크가 클립보드에 복사되었습니다.');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium border border-slate-700 transition"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      공유하기
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                    <button
+                      type="button"
+                      disabled={currentEpisode.num <= 1}
+                      onClick={() => handleSelectEpisode(currentEpisode.num - 1)}
+                      className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-sm font-semibold text-white transition"
+                    >
+                      ← 이전 화
+                    </button>
+                    <button
+                      type="button"
+                      disabled={currentEpisode.num >= EPISODES_100.length}
+                      onClick={() => handleSelectEpisode(currentEpisode.num + 1)}
+                      className="py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-sm font-bold text-slate-950 transition"
+                    >
+                      다음 화 ({Math.min(currentEpisode.num + 1, 100)}화) →
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center mx-auto text-violet-400">
-                  <Lock className="w-6 h-6" />
+              /* 6~100화 멤버십 잠금 화면 */
+              <div className="p-8 sm:p-10 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 text-center space-y-5">
+                <div className="w-16 h-16 rounded-2xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center mx-auto">
+                  <Lock className="w-8 h-8 text-amber-400" />
                 </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-white">
-                    {selectedEpisode.title}는 멤버십 전용 회차입니다
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    1~5화는 무료로 제공되며, 6~100화는 멤버십 결제 완료 시 즉시 잠금 해제됩니다.
+                <div className="space-y-2">
+                  <h2 className="text-xl font-bold text-white">
+                    제 {currentEpisode.num}화는 멤버십 전용 회차입니다
+                  </h2>
+                  <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
+                    1~5화는 무료로 감상하실 수 있으며, 6화부터 100화 완결까지는 멤버십 구독 후 즉시 열람하실 수 있습니다.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setPendingEpisode(selectedEpisode);
-                    setShowPaymentModal(true);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold transition"
-                >
-                  멤버십 결제하고 즉시 열람하기
-                </button>
+
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('membership')}
+                    className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm transition"
+                  >
+                    멤버십으로 6~100화 전체 열기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 transition"
+                  >
+                    관리자 검수 PIN 입력
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* TAB 3: 멤버십 */}
-        {activeTab === "membership" && (
-          <div className="space-y-5">
-            <section className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-slate-900 via-violet-950/30 to-slate-900 p-6 space-y-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                    <Crown className="w-3.5 h-3.5" />
-                    TOON STUDIOS ALL-PASS
-                  </span>
-                  <h2 className="text-xl font-extrabold text-white pt-1">
-                    웹툰스튜디오스 프리미엄 멤버십
-                  </h2>
-                  <p className="text-xs text-slate-300">
-                    결제 완료 즉시 6화~100화 전체 잠금 회차가 자동으로 해제됩니다.
-                  </p>
-                </div>
-
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 ${
-                    isMember
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                      : "bg-slate-800 text-slate-400 border border-slate-700"
-                  }`}
-                >
-                  {isMember ? "구독중" : "미구독"}
-                </span>
+        {/* ==================== 3. 멤버십 탭 ==================== */}
+        {activeTab === 'membership' && (
+          <div className="space-y-6">
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-500/20 via-slate-900 to-indigo-950 border border-amber-400/30">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-extrabold mb-3">
+                <Crown className="w-3.5 h-3.5" />
+                PREMIUM PASS · PortOne V2 안전결제
               </div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white mb-2">
+                《달을 비추는 옥탑》 전 100화 무제한 정주행
+              </h2>
+              <p className="text-sm text-slate-300">
+                광고 없는 쾌적한 전체화면 리더와 6화~100화 모든 에피소드를 지금 바로 잠금 해제하세요.
+              </p>
+            </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm font-semibold text-slate-200">
-                    월간 올패스 구독권
-                  </span>
-                  <div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-5">
+                <div>
+                  <span className="text-xs font-semibold text-slate-400">월간 정기구독</span>
+                  <h3 className="text-lg font-bold text-white mt-1">달빛 월간 패스</h3>
+                  <div className="mt-3 flex items-baseline gap-1">
                     <span className="text-2xl font-extrabold text-white">4,900원</span>
-                    <span className="text-xs text-slate-400"> / 월</span>
+                    <span className="text-xs text-slate-400">/ 월</span>
                   </div>
+                  <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
+                    <li>• 1~100화 전 회차 즉시 열람</li>
+                    <li>• 고화질 전체화면 컷 리더 지원</li>
+                    <li>• 언제든 해지 가능</li>
+                  </ul>
                 </div>
-
-                <ul className="space-y-2 text-xs text-slate-300 pt-2 border-t border-slate-800">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    1~5화 무료 + 6~100화 유료 회차 즉시 자동 잠금 해제
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    6:4 창작자 상생 모델로 작가에게 직접 후원
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    커뮤니티 전용 멤버십 배지 부여
-                  </li>
-                </ul>
+                <button
+                  type="button"
+                  onClick={() => handleSubscribe('달빛 월간 패스')}
+                  className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition"
+                >
+                  {isMember ? '현재 이용 중' : '월간 패스 시작하기'}
+                </button>
               </div>
 
-              {isMember ? (
-                <div className="space-y-3">
-                  <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-200 flex items-center gap-2">
-                    <Unlock className="w-4 h-4 text-emerald-400 shrink-0" />
-                    현재 멤버십 권한이 활성화되어 1~100화 전체를 자유롭게 감상할 수 있습니다.
+              <div className="p-6 rounded-2xl bg-slate-900 border-2 border-amber-400 flex flex-col justify-between space-y-5 relative">
+                <span className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-extrabold">
+                  BEST 추천
+                </span>
+                <div>
+                  <span className="text-xs font-semibold text-amber-400">소장용 완결 패키지</span>
+                  <h3 className="text-lg font-bold text-white mt-1">전권 소장 올패스 (100화)</h3>
+                  <div className="mt-3 flex items-baseline gap-1">
+                    <span className="text-2xl font-extrabold text-amber-300">19,900원</span>
+                    <span className="text-xs text-slate-400">/ 영구 소장</span>
                   </div>
-                  <button
-                    onClick={() => updateMembership(false)}
-                    className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
-                  >
-                    멤버십 해지하기 (잠금 상태 테스트용)
-                  </button>
+                  <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
+                    <li>• 1~100화 평생 무제한 소장</li>
+                    <li>• 미공개 일러스트 및 작가 후기 포함</li>
+                    <li>• 추가 결제 없이 전편 감상</li>
+                  </ul>
                 </div>
-              ) : (
                 <button
-                  onClick={() => {
-                    setPendingEpisode(null);
-                    setShowPaymentModal(true);
-                  }}
-                  className="w-full py-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-sm shadow-lg shadow-violet-600/25 transition flex items-center justify-center gap-2"
+                  type="button"
+                  onClick={() => handleSubscribe('전권 소장 올패스')}
+                  className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition"
                 >
-                  <CreditCard className="w-4 h-4" />
-                  멤버십 결제하고 6~100화 자동 해제하기
+                  {isMember ? '전권 소장 완료' : '전권 소장 결제하기'}
                 </button>
-              )}
-            </section>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* TAB 4: 커뮤니티 */}
-        {activeTab === "community" && (
+        {/* ==================== 4. 커뮤니티 탭 ==================== */}
+        {activeTab === 'community' && (
           <div className="space-y-5">
-            <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
-              <h2 className="text-base font-bold text-white">독자 커뮤니티</h2>
-              <form onSubmit={handleAddPost} className="flex gap-2">
-                <input
-                  type="text"
-                  value={newPostContent}
-                  onChange={(e) => setNewPostContent(e.target.value)}
-                  placeholder="작품 감상평이나 응원 댓글을 남겨주세요..."
-                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+              <h2 className="text-lg font-bold text-white mb-1">독자 감상 & 베스트 댓글</h2>
+              <p className="text-xs text-slate-400 mb-4">
+                현재 선택된 제 {currentEpisode.num}화에 대한 감상을 남겨보세요.
+              </p>
+
+              <form onSubmit={handleAddComment} className="space-y-3">
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder={`제 ${currentEpisode.num}화 감상평을 입력해주세요...`}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-700 p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                 />
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold flex items-center gap-1.5 shrink-0 transition"
-                >
-                  <Send className="w-4 h-4" />
-                  등록
-                </button>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm transition"
+                  >
+                    댓글 등록
+                  </button>
+                </div>
               </form>
             </div>
 
             <div className="space-y-3">
-              {posts.map((post) => (
+              {comments.map((c) => (
                 <div
-                  key={post.id}
-                  className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2.5"
+                  key={c.id}
+                  className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-white">{post.author}</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-violet-300 border border-slate-700">
-                        {post.badge}
-                      </span>
+                      {c.isBest && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+                          BEST
+                        </span>
+                      )}
+                      <span className="text-xs font-bold text-slate-200">{c.author}</span>
+                      <span className="text-[11px] text-amber-400">· {c.episode}화</span>
                     </div>
-                    <span className="text-[11px] text-slate-500">{post.createdAt}</span>
+                    <span className="text-[11px] text-slate-500">{c.createdAt}</span>
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                    {post.content}
-                  </p>
-                  <div className="pt-1">
-                    <button
-                      onClick={() => toggleLike(post.id)}
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg border transition ${
-                        post.liked
-                          ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
-                          : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
-                      }`}
-                    >
-                      <Heart
-                        className={`w-3.5 h-3.5 ${
-                          post.liked ? "fill-rose-400 text-rose-400" : ""
-                        }`}
-                      />
-                      좋아요 {post.likes}
-                    </button>
-                  </div>
+                  <p className="text-sm text-slate-300 leading-relaxed">{c.content}</p>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* TAB 5: 설정 */}
-        {activeTab === "settings" && (
+        {/* ==================== 5. 설정 탭 (관리자 전용 검수 모드 포함) ==================== */}
+        {activeTab === 'settings' && (
           <div className="space-y-5">
-            <section className="rounded-2xl border border-amber-500/40 bg-slate-900 p-5 sm:p-6 shadow-lg space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-bold text-white">
-                      관리자 전용 검수 모드
-                    </h2>
-                    {isAdminReviewMode && (
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                        검수중 활성
-                      </span>
-                    )}
+            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">
-                    기본 PIN(2026) 입력 시 잠금이 해제되어 결제 없이 1~100화 전체 회차를 검수할 수
-                    있습니다.
-                  </p>
+                  <div>
+                    <h2 className="text-base font-bold text-white">관리자 전용 검수 모드</h2>
+                    <p className="text-xs text-slate-400">
+                      결제 없이 1~100화 전체 원고 및 컷 이미지를 검수합니다.
+                    </p>
+                  </div>
                 </div>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                    isAdminReview
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {isAdminReview ? '활성화됨' : '비활성'}
+                </span>
               </div>
 
-              {isAdminReviewMode ? (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-amber-200 flex items-center gap-1.5">
-                      <Unlock className="w-4 h-4 text-amber-400" />
-                      1~100화 전체 검수 잠금이 해제되었습니다
-                    </p>
-                    <p className="text-xs text-amber-300/80">
-                      상단 헤더에 &apos;관리자 검수중&apos; 배지가 표시됩니다.
-                    </p>
-                  </div>
+              {isAdminReview ? (
+                <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-3">
+                  <p className="text-xs sm:text-sm text-emerald-200">
+                    현재 <strong>관리자 검수중</strong> 상태입니다. 헤더 배지가 표시되며 1~100화 모든 잠금이 해제되었습니다.
+                  </p>
                   <button
-                    onClick={handleDisableAdminMode}
-                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center justify-center gap-1.5 shrink-0 transition"
+                    type="button"
+                    onClick={handleAdminDisable}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
-                    검수 모드 해제
+                    검수 모드 종료하기
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleAdminPinSubmit} className="space-y-2.5">
+                <form onSubmit={handleAdminUnlock} className="space-y-3 pt-1">
                   <label className="block text-xs font-medium text-slate-300">
-                    관리자 PIN 번호 입력 (기본 PIN: 2026)
+                    관리자 검수 PIN 입력 (기본 PIN: 2026)
                   </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex gap-2">
                     <input
                       type="password"
                       inputMode="numeric"
                       maxLength={8}
-                      value={pinInput}
-                      onChange={(e) => {
-                        setPinInput(e.target.value);
-                        if (pinError) setPinError("");
-                      }}
-                      placeholder="PIN 입력 (기본값: 2026)"
-                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      value={adminPinInput}
+                      onChange={(e) => setAdminPinInput(e.target.value)}
+                      placeholder="PIN 번호 4자리 입력"
+                      className="flex-1 rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
                     />
                     <button
                       type="submit"
-                      className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-extrabold transition shrink-0"
+                      className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition flex items-center gap-1.5"
                     >
-                      검수 잠금 해제
+                      <Unlock className="w-4 h-4" />
+                      잠금 해제
                     </button>
                   </div>
-                  {pinError && (
-                    <p className="text-xs text-rose-400 flex items-center gap-1.5">
-                      <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                      {pinError}
+                  {adminError && (
+                    <p className="text-xs text-rose-400 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {adminError}
                     </p>
+                  )}
+                  {adminSuccessMsg && (
+                    <p className="text-xs text-emerald-400">{adminSuccessMsg}</p>
                   )}
                 </form>
               )}
-            </section>
+            </div>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6 space-y-4">
-              <h3 className="text-sm font-bold text-white">열람 권한 및 앱 설정</h3>
-              <div className="divide-y divide-slate-800 text-xs">
-                <div className="py-3 flex items-center justify-between">
-                  <span className="text-slate-400">무료 공개 범위</span>
-                  <span className="font-semibold text-sky-300">1화 ~ 5화</span>
-                </div>
-                <div className="py-3 flex items-center justify-between">
-                  <span className="text-slate-400">멤버십 잠금 범위</span>
-                  <span className="font-semibold text-slate-200">
-                    6화 ~ 100화 ({isMember ? "결제 완료 · 해제됨" : "잠금 상태"})
-                  </span>
-                </div>
-                <div className="py-3 flex items-center justify-between">
-                  <span className="text-slate-400">관리자 검수 상태</span>
-                  <span
-                    className={`font-semibold ${
-                      isAdminReviewMode ? "text-amber-300" : "text-slate-400"
-                    }`}
-                  >
-                    {isAdminReviewMode ? "활성화됨 (1~100화 열람 가능)" : "비활성"}
-                  </span>
-                </div>
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs text-slate-400">
+              <div className="flex justify-between py-1 border-b border-slate-800/80">
+                <span>서비스명</span>
+                <span className="text-slate-200 font-medium">웹툰스튜디오스 (Webtoon Studios)</span>
               </div>
-            </section>
+              <div className="flex justify-between py-1 border-b border-slate-800/80">
+                <span>연재 작품</span>
+                <span className="text-slate-200 font-medium">《달을 비추는 옥탑》 (총 100화)</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span>시스템 스택</span>
+                <span className="text-slate-200 font-medium">Next.js 15.5.29 · Neon DB · PortOne V2</span>
+              </div>
+            </div>
           </div>
         )}
       </main>
 
-      {/* Membership Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl space-y-5">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-500/40 flex items-center justify-center text-violet-400">
-                  <Crown className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-white">
-                    멤버십 전용 회차 잠금 안내
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    {pendingEpisode
-                      ? `${pendingEpisode.title}부터는 멤버십 결제가 필요합니다.`
-                      : "6화~100화 전체 잠금 해제"}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowPaymentModal(false)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">웹툰스튜디오스 올패스 멤버십</span>
-                <span className="font-bold text-white">4,900원 / 월</span>
-              </div>
-              <p className="text-xs text-slate-400">
-                결제 완료 즉시 6화~100화 모든 회차 잠금이 자동으로 해제됩니다.
-              </p>
-            </div>
-
-            <div className="flex gap-2.5">
-              <button
-                onClick={() => setShowPaymentModal(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleCompletePayment}
-                disabled={isProcessingPayment}
-                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center gap-2 transition"
-              >
-                <CreditCard className="w-4 h-4" />
-                {isProcessingPayment ? "결제 처리중..." : "결제 완료하기"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fullscreen Reader Overlay */}
-      {isReaderOpen && canAccessEpisode(selectedEpisode) && (
-        <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
-          <div className="h-14 px-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <button
-                onClick={() => setIsReaderOpen(false)}
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-              <span className="font-bold text-sm text-white truncate">
-                {selectedEpisode.title} - {selectedEpisode.subtitle}
+      {/* ==================== 전체화면 리더 모달 ==================== */}
+      {isFullscreen && isCurrentAccessible && currentEpisode.cuts && (
+        <div className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-lg flex flex-col">
+          {/* 전체화면 상단 바 */}
+          <div className="flex items-center justify-between px-4 h-14 border-b border-slate-800 bg-slate-950">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 text-xs font-bold">
+                제 {currentEpisode.num}화
               </span>
-              {isAdminReviewMode && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
-                  관리자 검수중
-                </span>
+              <span className="text-sm font-bold text-white truncate">
+                {currentEpisode.title}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(false)}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+              aria-label="전체화면 닫기"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* 전체화면 중앙 컷 뷰 영역 */}
+          <div className="flex-1 overflow-y-auto px-4 py-5 flex items-center justify-center">
+            <div className="w-full max-w-2xl">
+              {renderCutVisual(
+                currentEpisode.cuts[fullscreenCutIndex] || currentEpisode.cuts[0],
+                fullscreenCutIndex,
+                true
               )}
             </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                disabled={selectedEpisode.id <= 1}
-                onClick={() => {
-                  const prev = EPISODES[selectedEpisode.id - 2];
-                  if (prev) handleOpenEpisode(prev);
-                }}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 disabled:opacity-40 text-xs flex items-center gap-1"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                이전
-              </button>
-              <button
-                disabled={selectedEpisode.id >= TOTAL_EPISODES}
-                onClick={() => {
-                  const next = EPISODES[selectedEpisode.id];
-                  if (next) {
-                    if (canAccessEpisode(next)) {
-                      setSelectedEpisode(next);
-                    } else {
-                      setIsReaderOpen(false);
-                      setPendingEpisode(next);
-                      setShowPaymentModal(true);
-                    }
-                  }
-                }}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 disabled:opacity-40 text-xs flex items-center gap-1"
-              >
-                다음
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col items-center">
-            <div className="w-full max-w-xl space-y-5">
-              <div
-                className={`p-7 rounded-2xl bg-gradient-to-br ${selectedEpisode.thumbnailColor} text-center space-y-1.5`}
+          {/* 전체화면 하단 컷 네비게이션 */}
+          <div className="border-t border-slate-800 bg-slate-950 px-4 py-3">
+            <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={fullscreenCutIndex <= 0}
+                onClick={() => setFullscreenCutIndex((prev) => Math.max(prev - 1, 0))}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-35 text-xs sm:text-sm font-semibold text-white flex items-center gap-1 transition"
               >
-                <p className="text-[11px] uppercase tracking-widest text-white/80">
-                  WEBTOON STUDIOS ORIGINAL
-                </p>
-                <h3 className="text-2xl font-extrabold text-white">
-                  {selectedEpisode.title}
-                </h3>
-                <p className="text-xs text-white/90">{selectedEpisode.subtitle}</p>
+                <ChevronLeft className="w-4 h-4" />
+                이전 컷
+              </button>
+
+              {/* 컷 인디케이터 점 */}
+              <div className="flex items-center gap-1.5">
+                {currentEpisode.cuts.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setFullscreenCutIndex(i)}
+                    className={`h-2 rounded-full transition-all ${
+                      i === fullscreenCutIndex
+                        ? 'w-6 bg-amber-400'
+                        : 'w-2 bg-slate-700 hover:bg-slate-500'
+                    }`}
+                    aria-label={`${i + 1}컷으로 이동`}
+                  />
+                ))}
               </div>
 
-              {renderCutList()}
+              {fullscreenCutIndex < currentEpisode.cuts.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFullscreenCutIndex((prev) =>
+                      Math.min(prev + 1, currentEpisode.cuts.length - 1)
+                    )
+                  }
+                  className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-xs sm:text-sm font-bold text-slate-950 flex items-center gap-1 transition"
+                >
+                  다음 컷
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFullscreen(false);
+                    if (currentEpisode.num < EPISODES_100.length) {
+                      handleSelectEpisode(currentEpisode.num + 1);
+                    }
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-xs sm:text-sm font-bold text-slate-950 transition"
+                >
+                  {currentEpisode.num < EPISODES_100.length ? '다음 화로 →' : '완결 감상 완료'}
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* 하단 고정 탭바 */}
-      <nav
-        aria-label="하단 고정 내비게이션"
-        className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
-      >
+      {/* ==================== 하단 고정 탭바 (5개 메뉴) ==================== */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800">
         <div className="max-w-3xl mx-auto grid grid-cols-5 h-16">
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`relative flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
-                  isActive
-                    ? "text-violet-400"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {isActive && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-violet-400" />
-                )}
-                <div className="relative">
-                  {item.icon}
-                  {item.id === "settings" && isAdminReviewMode && (
-                    <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-amber-400" />
-                  )}
-                </div>
-                <span className="truncate">{item.label}</span>
-              </button>
-            );
-          })}
+          <button
+            type="button"
+            onClick={() => setActiveTab('intro')}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+              activeTab === 'intro' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BookOpen className="w-5 h-5" />
+            <span>작품 소개</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('viewer')}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+              activeTab === 'viewer' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Play className="w-5 h-5" />
+            <span>웹툰 뷰어</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('membership')}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+              activeTab === 'membership' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Crown className="w-5 h-5" />
+            <span>멤버십</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('community')}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+              activeTab === 'community' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            <span>커뮤니티</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${
+              activeTab === 'settings' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Settings className="w-5 h-5" />
+            <span>설정</span>
+          </button>
         </div>
       </nav>
     </div>
