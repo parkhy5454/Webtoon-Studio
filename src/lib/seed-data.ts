@@ -1,3 +1,13 @@
+export interface CharacterInfo {
+  badge: string;
+  badgeClass: string;
+  ref: string;
+  name: string;
+  role: string;
+  quote: string;
+  trait: string;
+  desire: string;
+}
 export interface WebtoonCut {
   num?: number;
   shot?: string;
