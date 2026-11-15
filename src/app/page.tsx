@@ -32,7 +32,23 @@ import {
   Users,
   Trash2,
 } from 'lucide-react';
-import { EPISODES_100, Episode, EpisodeCut } from '@/lib/episodes-100';
+import { EPISODES_100 } from '@/lib/episodes-100';
+
+interface EpisodeCut {
+  img: string;
+  scene?: string;
+  narration?: string;
+  dialogue?: string;
+  sfx?: string;
+  [key: string]: unknown;
+}
+
+interface Episode {
+  num: number;
+  title: string;
+  cuts: EpisodeCut[];
+  [key: string]: unknown;
+}
 
 type TabType = 'intro' | 'viewer' | 'membership' | 'community' | 'settings';
 
@@ -96,6 +112,8 @@ const INITIAL_COMMENTS: CommentItem[] = [
   },
 ];
 
+const SAFE_EPISODES_100 = EPISODES_100 as unknown as Episode[];
+
 const INITIAL_WORKS: WebtoonWork[] = [
   {
     id: 'work-dalbit',
@@ -105,9 +123,9 @@ const INITIAL_WORKS: WebtoonWork[] = [
     genre: '감성 로맨스 · 드라마',
     synopsis:
       '서울의 가장 낮은 골목 끝, 달빛만이 유일한 조명인 오래된 옥탑방. 각자의 상처를 숨긴 채 옥상 난간을 마주한 두 청춘이 써 내려가는 100일간의 야경 로맨스 드라마.',
-    coverImg: EPISODES_100[0]?.cuts?.[0]?.img || '',
+    coverImg: SAFE_EPISODES_100[0]?.cuts?.[0]?.img || '',
     subscribers: 1280,
-    episodes: EPISODES_100,
+    episodes: SAFE_EPISODES_100,
     isOfficial: true,
   },
 ];
@@ -368,7 +386,7 @@ export default function WebtoonStudioPage() {
   // 컷 입력 필드 조작
   const handleCutFieldChange = (
     index: number,
-    field: keyof EpisodeCut,
+    field: 'img' | 'scene' | 'narration' | 'dialogue' | 'sfx',
     value: string
   ) => {
     setNewEpCuts((prev) =>
@@ -409,10 +427,10 @@ export default function WebtoonStudioPage() {
 
     const validCuts = newEpCuts.filter(
       (c) =>
-        c.img.trim() ||
-        c.scene.trim() ||
-        c.narration.trim() ||
-        c.dialogue.trim()
+        (c.img || '').trim() ||
+        (c.scene || '').trim() ||
+        (c.narration || '').trim() ||
+        (c.dialogue || '').trim()
     );
 
     if (validCuts.length === 0) {
@@ -1548,7 +1566,7 @@ export default function WebtoonStudioPage() {
 
                                 <input
                                   type="text"
-                                  value={cut.img}
+                                  value={cut.img || ''}
                                   onChange={(e) =>
                                     handleCutFieldChange(idx, 'img', e.target.value)
                                   }
@@ -1558,7 +1576,7 @@ export default function WebtoonStudioPage() {
                                 <div className="grid sm:grid-cols-2 gap-2">
                                   <input
                                     type="text"
-                                    value={cut.scene}
+                                    value={cut.scene || ''}
                                     onChange={(e) =>
                                       handleCutFieldChange(idx, 'scene', e.target.value)
                                     }
@@ -1567,7 +1585,7 @@ export default function WebtoonStudioPage() {
                                   />
                                   <input
                                     type="text"
-                                    value={cut.sfx}
+                                    value={cut.sfx || ''}
                                     onChange={(e) =>
                                       handleCutFieldChange(idx, 'sfx', e.target.value)
                                     }
@@ -1577,7 +1595,7 @@ export default function WebtoonStudioPage() {
                                 </div>
                                 <input
                                   type="text"
-                                  value={cut.narration}
+                                  value={cut.narration || ''}
                                   onChange={(e) =>
                                     handleCutFieldChange(idx, 'narration', e.target.value)
                                   }
@@ -1586,7 +1604,7 @@ export default function WebtoonStudioPage() {
                                 />
                                 <input
                                   type="text"
-                                  value={cut.dialogue}
+                                  value={cut.dialogue || ''}
                                   onChange={(e) =>
                                     handleCutFieldChange(idx, 'dialogue', e.target.value)
                                   }
@@ -1737,7 +1755,7 @@ export default function WebtoonStudioPage() {
               <div className="flex justify-between py-1">
                 <span>시스템 스택</span>
                 <span className="text-slate-200 font-medium">
-                  Next.js 15.5.29 · Neon DB · PortOne V2
+                  Next.js · Neon DB · PortOne V2
                 </span>
               </div>
             </div>
