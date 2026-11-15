@@ -3,7 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "웹툰스튜디오스 - 멀티 웹툰 멤버십 & 모바일 뷰어",
+  title: "달빛 웹툰 스튜디오 - 멀티 웹툰 멤버십 & 모바일 뷰어",
   description:
     "《달을 비추는 옥탑》 오리지널 웹툰 멤버십 구독 플랫폼. PortOne V2 정기결제 + Neon PostgreSQL + Vercel.",
 };
