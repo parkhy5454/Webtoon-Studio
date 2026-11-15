@@ -25,6 +25,7 @@ import {
   Calendar,
   Layers,
 } from "lucide-react";
+import { EPISODES_100 } from "@/lib/episodes-100";
 
 type TabType = "intro" | "viewer" | "membership" | "community" | "settings";
 
@@ -32,6 +33,7 @@ interface Episode {
   id: number;
   title: string;
   subtitle: string;
+  part: string;
   releaseDate: string;
   isFree: boolean;
   cutsCount: number;
@@ -48,43 +50,36 @@ interface CommunityPost {
   liked?: boolean;
 }
 
-const TOTAL_EPISODES = 100;
+const TOTAL_EPISODES = EPISODES_100.length;
 const ADMIN_DEFAULT_PIN = "2026";
 
-const EPISODES: Episode[] = Array.from({ length: TOTAL_EPISODES }, (_, idx) => {
-  const epNum = idx + 1;
-  const isFree = epNum <= 5;
-  const colors = [
-    "from-indigo-600 to-purple-700",
-    "from-emerald-600 to-teal-700",
-    "from-rose-600 to-orange-700",
-    "from-sky-600 to-blue-700",
-    "from-amber-600 to-red-700",
-  ];
-  return {
-    id: epNum,
-    title: `제 ${epNum}화`,
-    subtitle:
-      epNum === 1
-        ? "서울의 달빛 아래 시작된 인연 (50컷 특별판)"
-        : epNum <= 5
-        ? `프롤로그 아크 - 운명의 갈림길 (${epNum}/5)`
-        : `본편 시즌 ${Math.ceil((epNum - 5) / 25)} - 숨겨진 진실 #${epNum - 5}`,
-    releaseDate: `2026.${String(((epNum - 1) % 12) + 1).padStart(2, "0")}.${String(
-      ((epNum * 3) % 28) + 1
-    ).padStart(2, "0")}`,
-    isFree,
-    cutsCount: epNum === 1 ? 50 : 42 + (epNum % 15),
-    thumbnailColor: colors[idx % colors.length],
-  };
-});
+const COLORS = [
+  "from-indigo-600 to-purple-700",
+  "from-emerald-600 to-teal-700",
+  "from-rose-600 to-orange-700",
+  "from-sky-600 to-blue-700",
+  "from-amber-600 to-red-700",
+];
+
+const EPISODES: Episode[] = EPISODES_100.map((ep, idx) => ({
+  id: ep.epNumber,
+  title: `제 ${ep.epNumber}화`,
+  subtitle: ep.title.replace(/^제\d+화:\s*/, ""),
+  part: ep.part,
+  releaseDate: `2026.${String(((ep.epNumber - 1) % 12) + 1).padStart(2, "0")}.${String(
+    ((ep.epNumber * 3) % 28) + 1
+  ).padStart(2, "0")}`,
+  isFree: ep.isFree,
+  cutsCount: ep.cuts.length,
+  thumbnailColor: COLORS[idx % COLORS.length],
+}));
 
 const INITIAL_POSTS: CommunityPost[] = [
   {
     id: 1,
     author: "달빛산책자",
     badge: "멤버십 구독자",
-    content: "1화 50컷 연출 몰입감 미쳤네요... 6화부터 멤버십 결제하고 밤새 정주행 중입니다!",
+    content: "1화 연출 몰입감 미쳤네요... 6화부터 멤버십 결제하고 밤새 정주행 중입니다!",
     createdAt: "2시간 전",
     likes: 42,
   },
@@ -100,7 +95,7 @@ const INITIAL_POSTS: CommunityPost[] = [
     id: 3,
     author: "서울야경",
     badge: "독자",
-    content: "90년대 감성이랑 현대 판타지 작화가 너무 잘 어울려요. 다음 시즌 외전도 기대합니다.",
+    content: "90년대 감성이랑 현대 배경이 너무 잘 어울려요. 100화 완결까지 응원합니다.",
     createdAt: "3일 전",
     likes: 27,
   },
@@ -111,26 +106,21 @@ export default function ToonStudiosPage() {
   const [isMember, setIsMember] = useState<boolean>(false);
   const [isAdminReviewMode, setIsAdminReviewMode] = useState<boolean>(false);
 
-  // Admin PIN state
   const [pinInput, setPinInput] = useState<string>("");
   const [pinError, setPinError] = useState<string>("");
 
-  // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
   const [pendingEpisode, setPendingEpisode] = useState<Episode | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
   const [paymentSuccessToast, setPaymentSuccessToast] = useState<boolean>(false);
 
-  // Viewer active episode
   const [selectedEpisode, setSelectedEpisode] = useState<Episode>(EPISODES[0]);
   const [isReaderOpen, setIsReaderOpen] = useState<boolean>(false);
   const [episodeFilter, setEpisodeFilter] = useState<"all" | "free" | "locked">("all");
 
-  // Community state
   const [posts, setPosts] = useState<CommunityPost[]>(INITIAL_POSTS);
   const [newPostContent, setNewPostContent] = useState<string>("");
 
-  // Restore saved states
   useEffect(() => {
     try {
       const savedMember = localStorage.getItem("ts_is_member");
@@ -253,6 +243,9 @@ export default function ToonStudiosPage() {
     return true;
   });
 
+  const activeCuts =
+    EPISODES_100.find((ep) => ep.epNumber === selectedEpisode.id)?.cuts ?? [];
+
   const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: "intro", label: "작품 소개", icon: <BookOpen className="w-5 h-5" /> },
     { id: "viewer", label: "웹툰 뷰어", icon: <PlaySquare className="w-5 h-5" /> },
@@ -260,6 +253,59 @@ export default function ToonStudiosPage() {
     { id: "community", label: "커뮤니티", icon: <MessageSquare className="w-5 h-5" /> },
     { id: "settings", label: "설정", icon: <Settings className="w-5 h-5" /> },
   ];
+
+  const renderCutList = () => (
+    <div className="space-y-4">
+      {activeCuts.map((cut, idx) => (
+        <div
+          key={idx}
+          className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-lg"
+        >
+          {cut.showImage !== false && cut.img && (
+            <img
+              src={cut.img}
+              alt={`${selectedEpisode.title} 컷 ${cut.num || idx + 1}`}
+              className="w-full object-cover"
+            />
+          )}
+          <div className="p-4 space-y-2.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-bold text-violet-300 bg-violet-950/80 border border-violet-700/60 px-2.5 py-0.5 rounded-full">
+                CUT #{cut.num || idx + 1} / {activeCuts.length}
+              </span>
+              {cut.shot && <span className="text-slate-500">{cut.shot}</span>}
+            </div>
+
+            {cut.scene && (
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                {cut.scene}
+              </p>
+            )}
+
+            {cut.narration && (
+              <div className="bg-amber-50 text-slate-950 text-xs font-bold px-3.5 py-2.5 rounded-lg border-l-4 border-amber-500 shadow">
+                {cut.narration}
+              </div>
+            )}
+
+            {cut.dialogue && (
+              <div className="bg-white text-slate-950 text-xs font-bold px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-md inline-block max-w-full whitespace-pre-line">
+                {cut.dialogue}
+              </div>
+            )}
+
+            {cut.sfx && (
+              <div className="text-right">
+                <span className="inline-block text-xs font-black italic text-amber-300 tracking-wider">
+                  {cut.sfx}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 pb-24">
@@ -271,10 +317,9 @@ export default function ToonStudiosPage() {
               TS
             </div>
             <h1 className="font-bold text-base sm:text-lg tracking-tight text-white truncate">
-              툰스튜디오스
+              웹툰스튜디오스
             </h1>
 
-            {/* 헤더 관리자 검수중 배지 */}
             {isAdminReviewMode && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 animate-pulse">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
@@ -317,10 +362,9 @@ export default function ToonStudiosPage() {
 
       {/* Main Content Container */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-5">
-        {/* TAB 1: 작품 소개 (Intro & Episode Directory) */}
+        {/* TAB 1: 작품 소개 */}
         {activeTab === "intro" && (
           <div className="space-y-6">
-            {/* Hero Cover Card */}
             <section className="rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-slate-900 via-indigo-950/70 to-slate-900 p-5 sm:p-6 space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30">
@@ -332,15 +376,23 @@ export default function ToonStudiosPage() {
                 </span>
               </div>
 
-              <div className="space-y-2">
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  서울의 달빛 연대기
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  1990년대 서울의 밤거리에서 시작된 두 청춘의 엇갈린 운명과 숨겨진
-                  초자연적 비밀을 그린 대서사 웹툰. 1화 50컷 특별 연출판을 포함해 총
-                  100화 전편이 공개되었습니다.
-                </p>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                <div className="sm:col-span-7 space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                    달을 비추는 옥탑
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                    1994년 명작 《서울의 달》을 2026년 현대판 코인, 배달 라이더, 청년 주거 현실로
+                    재해석한 청춘 군상극. 총 100화 완결 전편이 공개되었습니다.
+                  </p>
+                </div>
+                <div className="sm:col-span-5">
+                  <img
+                    src="/images/poster-seoul-moon.jpg"
+                    alt="달을 비추는 옥탑 대표 포스터"
+                    className="w-full h-48 object-cover rounded-xl border border-slate-700 shadow-lg"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2.5 pt-1">
@@ -354,7 +406,7 @@ export default function ToonStudiosPage() {
                 <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-center">
                   <div className="flex items-center justify-center gap-1 text-white font-bold text-sm">
                     <Layers className="w-4 h-4 text-violet-400" />
-                    총 100화
+                    총 {TOTAL_EPISODES}화
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">완결 아카이브</p>
                 </div>
@@ -373,7 +425,7 @@ export default function ToonStudiosPage() {
                   className="flex-1 py-3 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-sm shadow-lg shadow-violet-600/25 transition flex items-center justify-center gap-2"
                 >
                   <PlaySquare className="w-4 h-4" />
-                  1화 무료 첫화보기 (50컷)
+                  1화 무료 첫화보기
                 </button>
                 {!isMember && !isAdminReviewMode && (
                   <button
@@ -451,12 +503,8 @@ export default function ToonStudiosPage() {
                       <div
                         className={`relative w-14 h-14 rounded-lg bg-gradient-to-br ${ep.thumbnailColor} flex flex-col items-center justify-center shrink-0 overflow-hidden`}
                       >
-                        <span className="text-xs font-bold text-white">
-                          EP.{ep.id}
-                        </span>
-                        <span className="text-[10px] text-white/80">
-                          {ep.cutsCount}컷
-                        </span>
+                        <span className="text-xs font-bold text-white">EP.{ep.id}</span>
+                        <span className="text-[10px] text-white/80">{ep.cutsCount}컷</span>
                         {!unlocked && (
                           <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center">
                             <Lock className="w-4 h-4 text-slate-200" />
@@ -466,9 +514,7 @@ export default function ToonStudiosPage() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <span className="font-bold text-sm text-white">
-                            {ep.title}
-                          </span>
+                          <span className="font-bold text-sm text-white">{ep.title}</span>
                           {ep.isFree ? (
                             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">
                               무료
@@ -487,12 +533,8 @@ export default function ToonStudiosPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-300 truncate">
-                          {ep.subtitle}
-                        </p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          {ep.releaseDate}
-                        </p>
+                        <p className="text-xs text-slate-300 truncate">{ep.subtitle}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{ep.part}</p>
                       </div>
 
                       <div className="shrink-0 text-slate-400">
@@ -510,10 +552,9 @@ export default function ToonStudiosPage() {
           </div>
         )}
 
-        {/* TAB 2: 웹툰 뷰어 (Webtoon Viewer) */}
+        {/* TAB 2: 웹툰 뷰어 */}
         {activeTab === "viewer" && (
           <div className="space-y-4">
-            {/* Viewer Control Bar */}
             <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-2">
               <button
                 disabled={selectedEpisode.id <= 1}
@@ -553,6 +594,7 @@ export default function ToonStudiosPage() {
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {[1, 2, 3, 4, 5, 6, 10, 25, 50, 100].map((num) => {
                 const ep = EPISODES[num - 1];
+                if (!ep) return null;
                 const unlocked = canAccessEpisode(ep);
                 const isCurrent = selectedEpisode.id === num;
                 return (
@@ -574,7 +616,6 @@ export default function ToonStudiosPage() {
               })}
             </div>
 
-            {/* Viewer Stream */}
             {canAccessEpisode(selectedEpisode) ? (
               <div className="space-y-4">
                 <div
@@ -595,22 +636,7 @@ export default function ToonStudiosPage() {
                   </p>
                 </div>
 
-                {Array.from({ length: 6 }, (_, idx) => (
-                  <div
-                    key={idx}
-                    className="h-64 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center p-6 text-center"
-                  >
-                    <span className="text-[11px] font-mono text-slate-500 mb-1.5">
-                      SCENE #{idx + 1} / {selectedEpisode.cutsCount} CUTS
-                    </span>
-                    <p className="text-sm font-medium text-slate-200">
-                      {selectedEpisode.title} 고해상도 세로 스크롤 원고 영역
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      웹툰 뷰어 렌더링 캔버스
-                    </p>
-                  </div>
-                ))}
+                {renderCutList()}
               </div>
             ) : (
               <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-4">
@@ -639,7 +665,7 @@ export default function ToonStudiosPage() {
           </div>
         )}
 
-        {/* TAB 3: 멤버십 (Membership) */}
+        {/* TAB 3: 멤버십 */}
         {activeTab === "membership" && (
           <div className="space-y-5">
             <section className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-slate-900 via-violet-950/30 to-slate-900 p-6 space-y-5">
@@ -650,7 +676,7 @@ export default function ToonStudiosPage() {
                     TOON STUDIOS ALL-PASS
                   </span>
                   <h2 className="text-xl font-extrabold text-white pt-1">
-                    툰스튜디오스 프리미엄 멤버십
+                    웹툰스튜디오스 프리미엄 멤버십
                   </h2>
                   <p className="text-xs text-slate-300">
                     결제 완료 즉시 6화~100화 전체 잠금 회차가 자동으로 해제됩니다.
@@ -674,9 +700,7 @@ export default function ToonStudiosPage() {
                     월간 올패스 구독권
                   </span>
                   <div>
-                    <span className="text-2xl font-extrabold text-white">
-                      4,900원
-                    </span>
+                    <span className="text-2xl font-extrabold text-white">4,900원</span>
                     <span className="text-xs text-slate-400"> / 월</span>
                   </div>
                 </div>
@@ -688,7 +712,7 @@ export default function ToonStudiosPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    감독판 50컷 스페셜 에피소드 및 비하인드 콘티 열람
+                    6:4 창작자 상생 모델로 작가에게 직접 후원
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -726,7 +750,7 @@ export default function ToonStudiosPage() {
           </div>
         )}
 
-        {/* TAB 4: 커뮤니티 (Community) */}
+        {/* TAB 4: 커뮤니티 */}
         {activeTab === "community" && (
           <div className="space-y-5">
             <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
@@ -757,16 +781,12 @@ export default function ToonStudiosPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-white">
-                        {post.author}
-                      </span>
+                      <span className="font-bold text-sm text-white">{post.author}</span>
                       <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-violet-300 border border-slate-700">
                         {post.badge}
                       </span>
                     </div>
-                    <span className="text-[11px] text-slate-500">
-                      {post.createdAt}
-                    </span>
+                    <span className="text-[11px] text-slate-500">{post.createdAt}</span>
                   </div>
                   <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                     {post.content}
@@ -794,10 +814,9 @@ export default function ToonStudiosPage() {
           </div>
         )}
 
-        {/* TAB 5: 설정 (Settings - 최상단 관리자 전용 검수 모드 포함) */}
+        {/* TAB 5: 설정 */}
         {activeTab === "settings" && (
           <div className="space-y-5">
-            {/* 설정 탭 최상단: 관리자 전용 검수 모드 */}
             <section className="rounded-2xl border border-amber-500/40 bg-slate-900 p-5 sm:p-6 shadow-lg space-y-4">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
@@ -815,7 +834,8 @@ export default function ToonStudiosPage() {
                     )}
                   </div>
                   <p className="text-xs text-slate-400 mt-1">
-                    기본 PIN(2026) 입력 시 잠금이 해제되어 결제 없이 1~100화 전체 회차를 검수할 수 있습니다.
+                    기본 PIN(2026) 입력 시 잠금이 해제되어 결제 없이 1~100화 전체 회차를 검수할 수
+                    있습니다.
                   </p>
                 </div>
               </div>
@@ -874,7 +894,6 @@ export default function ToonStudiosPage() {
               )}
             </section>
 
-            {/* 일반 계정 및 권한 상태 요약 */}
             <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6 space-y-4">
               <h3 className="text-sm font-bold text-white">열람 권한 및 앱 설정</h3>
               <div className="divide-y divide-slate-800 text-xs">
@@ -934,7 +953,7 @@ export default function ToonStudiosPage() {
 
             <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">툰스튜디오스 올패스 멤버십</span>
+                <span className="text-slate-300">웹툰스튜디오스 올패스 멤버십</span>
                 <span className="font-bold text-white">4,900원 / 월</span>
               </div>
               <p className="text-xs text-slate-400">
@@ -962,7 +981,7 @@ export default function ToonStudiosPage() {
         </div>
       )}
 
-      {/* Fullscreen Reader Overlay (Optional quick view) */}
+      {/* Fullscreen Reader Overlay */}
       {isReaderOpen && canAccessEpisode(selectedEpisode) && (
         <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
           <div className="h-14 px-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
@@ -1023,7 +1042,7 @@ export default function ToonStudiosPage() {
                 className={`p-7 rounded-2xl bg-gradient-to-br ${selectedEpisode.thumbnailColor} text-center space-y-1.5`}
               >
                 <p className="text-[11px] uppercase tracking-widest text-white/80">
-                  TOON STUDIOS ORIGINAL
+                  WEBTOON STUDIOS ORIGINAL
                 </p>
                 <h3 className="text-2xl font-extrabold text-white">
                   {selectedEpisode.title}
@@ -1031,25 +1050,13 @@ export default function ToonStudiosPage() {
                 <p className="text-xs text-white/90">{selectedEpisode.subtitle}</p>
               </div>
 
-              {Array.from({ length: 5 }, (_, i) => (
-                <div
-                  key={i}
-                  className="h-64 rounded-xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center text-slate-400 p-6 text-center"
-                >
-                  <span className="text-xs font-mono text-slate-500 mb-1.5">
-                    CUT #{i + 1} / {selectedEpisode.cutsCount}
-                  </span>
-                  <p className="text-sm text-slate-300">
-                    {selectedEpisode.title} 웹툰 원고 뷰어 영역
-                  </p>
-                </div>
-              ))}
+              {renderCutList()}
             </div>
           </div>
         </div>
       )}
 
-      {/* 1. 모바일/화면 하단 고정 탭바 (fixed bottom-0) 복원 */}
+      {/* 하단 고정 탭바 */}
       <nav
         aria-label="하단 고정 내비게이션"
         className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
