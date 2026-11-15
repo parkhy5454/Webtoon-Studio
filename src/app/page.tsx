@@ -1,1041 +1,746 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  BookOpen,
-  Check,
-  CheckCircle2,
-  Crown,
-  Database,
-  Heart,
-  Layers,
-  MessageSquare,
-  PenTool,
+  Lock,
+  Unlock,
   ShieldCheck,
-  Sparkles,
-  TrendingUp,
-  Users,
+  ShieldAlert,
+  Crown,
+  BookOpen,
+  Settings,
+  CheckCircle2,
   X,
+  CreditCard,
+  Eye,
+  Sparkles,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
-import type { CommentItem, SubscriptionItem, WebtoonItem } from "@/lib/seed-data";
-import { DEFAULT_COMMENTS, DEFAULT_WEBTOONS } from "@/lib/seed-data";
 
-type TabId = "hero" | "viewer" | "membership" | "community" | "creator" | "admin";
-
-declare global {
-  interface Window {
-    PortOne?: {
-      requestIssueBillingKey: (params: Record<string, unknown>) => Promise<{
-        code?: string;
-        message?: string;
-        billingKey?: string;
-      }>;
-    };
-  }
+interface Episode {
+  id: number;
+  title: string;
+  subtitle: string;
+  releaseDate: string;
+  isFree: boolean;
+  cutsCount: number;
+  thumbnailColor: string;
 }
 
-export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<TabId>("hero");
-  const [dbConnected, setDbConnected] = useState<boolean>(false);
-  const [webtoons, setWebtoons] = useState<WebtoonItem[]>(DEFAULT_WEBTOONS);
-  const [selectedId, setSelectedId] = useState<string>("seoul-moon");
-  const [viewerMode, setViewerMode] = useState<"cuts" | "script">("cuts");
+const TOTAL_EPISODES = 100;
+const ADMIN_DEFAULT_PIN = "2026";
 
-  const [comments, setComments] = useState<CommentItem[]>(DEFAULT_COMMENTS);
-  const [commName, setCommName] = useState("");
-  const [commTier, setCommTier] = useState("달동네 스페셜");
-  const [commText, setCommText] = useState("");
+const EPISODES: Episode[] = Array.from({ length: TOTAL_EPISODES }, (_, idx) => {
+  const epNum = idx + 1;
+  const isFree = epNum <= 5;
+  const colors = [
+    "from-indigo-600 to-purple-700",
+    "from-emerald-600 to-teal-700",
+    "from-rose-600 to-orange-700",
+    "from-sky-600 to-blue-700",
+    "from-amber-600 to-red-700",
+  ];
+  return {
+    id: epNum,
+    title: `제 ${epNum}화`,
+    subtitle:
+      epNum === 1
+        ? "서울의 달빛 아래 시작된 인연 (50컷 특별판)"
+        : epNum <= 5
+        ? `프롤로그 아크 - 운명의 갈림길 (${epNum}/5)`
+        : `본편 시즌 ${Math.ceil((epNum - 5) / 25)} - 숨겨진 진실 #${epNum - 5}`,
+    releaseDate: `2026.${String(((epNum - 1) % 12) + 1).padStart(2, "0")}.${String(
+      ((epNum * 3) % 28) + 1
+    ).padStart(2, "0")}`,
+    isFree,
+    cutsCount: epNum === 1 ? 50 : 42 + (epNum % 15),
+    thumbnailColor: colors[idx % colors.length],
+  };
+});
 
-  // Subscription Modal
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalTierName, setModalTierName] = useState("달동네 스페셜");
-  const [modalTierPrice, setModalTierPrice] = useState(4900);
-  const [customerName, setCustomerName] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
-  const [referralInput, setReferralInput] = useState("");
-  const [submittingPay, setSubmittingPay] = useState(false);
+export default function WebtoonStudiosPage() {
+  const [activeTab, setActiveTab] = useState<"episodes" | "settings">("episodes");
+  const [isMember, setIsMember] = useState<boolean>(false);
+  const [isAdminReviewMode, setIsAdminReviewMode] = useState<boolean>(false);
 
-  // Admin / Subscriptions state
-  const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
-  const [summary, setSummary] = useState({
-    totalSubscriptions: 142,
-    monthlyRevenueKrw: 142 * 4900,
-    creatorShareKrw: Math.round(142 * 4900 * 0.4),
-    platformShareKrw: Math.round(142 * 4900 * 0.6),
-  });
+  // Admin PIN modal / inline states
+  const [pinInput, setPinInput] = useState<string>("");
+  const [pinError, setPinError] = useState<string>("");
 
-  // Creator Studio Form
-  const [newTitle, setNewTitle] = useState("");
-  const [newAuthor, setNewAuthor] = useState("");
-  const [newGenre, setNewGenre] = useState("드라마");
-  const [newSubtitle, setNewSubtitle] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [publishing, setPublishing] = useState(false);
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [pendingEpisode, setPendingEpisode] = useState<Episode | null>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
+  const [paymentSuccessToast, setPaymentSuccessToast] = useState<boolean>(false);
 
-  // Toast
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // Viewer modal state
+  const [viewingEpisode, setViewingEpisode] = useState<Episode | null>(null);
 
-  const selectedWebtoon =
-    webtoons.find((w) => w.id === selectedId) || webtoons[0] || DEFAULT_WEBTOONS[0];
+  // Filter state
+  const [filterMode, setFilterMode] = useState<"all" | "free" | "locked">("all");
 
-  function showToast(msg: string) {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 3500);
-  }
-
-  async function loadInitialData() {
-    try {
-      const res = await fetch("/api/webtoons");
-      const data = await res.json();
-      if (Array.isArray(data.webtoons) && data.webtoons.length > 0) {
-        setWebtoons(data.webtoons);
-        setSelectedId(data.webtoons[0].id);
-      }
-      setDbConnected(Boolean(data.connected));
-    } catch {
-      setDbConnected(false);
-    }
-  }
-
-  async function loadComments(webtoonId: string) {
-    try {
-      const res = await fetch(`/api/comments?webtoonId=${encodeURIComponent(webtoonId)}`);
-      const data = await res.json();
-      if (Array.isArray(data.comments)) {
-        setComments(data.comments);
-      }
-    } catch {
-      // keep fallback
-    }
-  }
-
-  async function loadSubscriptions() {
-    try {
-      const res = await fetch("/api/subscriptions");
-      const data = await res.json();
-      if (data.summary) setSummary(data.summary);
-      if (Array.isArray(data.subscriptions)) setSubscriptions(data.subscriptions);
-    } catch {
-      // keep fallback
-    }
-  }
-
+  // Restore session state from localStorage
   useEffect(() => {
-    loadInitialData();
-    loadSubscriptions();
+    try {
+      const savedMember = localStorage.getItem("ws_is_member");
+      const savedAdmin = localStorage.getItem("ws_is_admin_review");
+      if (savedMember === "true") setIsMember(true);
+      if (savedAdmin === "true") setIsAdminReviewMode(true);
+    } catch {
+      // ignore storage errors
+    }
   }, []);
 
-  useEffect(() => {
-    if (selectedId) {
-      loadComments(selectedId);
-    }
-  }, [selectedId]);
-
-  async function handleLike() {
-    setWebtoons((prev) =>
-      prev.map((w) => (w.id === selectedWebtoon.id ? { ...w, likes: w.likes + 1 } : w))
-    );
+  const updateMembership = (status: boolean) => {
+    setIsMember(status);
     try {
-      await fetch(`/api/webtoons/${encodeURIComponent(selectedWebtoon.id)}/like`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "like" }),
-      });
-      showToast(`《${selectedWebtoon.title}》에 좋아요를 눌렀습니다!`);
+      localStorage.setItem("ws_is_member", String(status));
     } catch {
-      showToast("좋아요가 반영되었습니다.");
+      // ignore
     }
-  }
+  };
 
-  async function handleAddComment(e: React.FormEvent) {
+  const updateAdminReviewMode = (status: boolean) => {
+    setIsAdminReviewMode(status);
+    try {
+      localStorage.setItem("ws_is_admin_review", String(status));
+    } catch {
+      // ignore
+    }
+  };
+
+  const canAccessEpisode = (ep: Episode) => {
+    if (ep.isFree) return true;
+    if (isMember) return true;
+    if (isAdminReviewMode) return true;
+    return false;
+  };
+
+  const handleEpisodeClick = (ep: Episode) => {
+    if (canAccessEpisode(ep)) {
+      setViewingEpisode(ep);
+    } else {
+      setPendingEpisode(ep);
+      setShowPaymentModal(true);
+    }
+  };
+
+  const handleCompletePayment = () => {
+    setIsProcessingPayment(true);
+    setTimeout(() => {
+      updateMembership(true);
+      setIsProcessingPayment(false);
+      setShowPaymentModal(false);
+      setPaymentSuccessToast(true);
+      if (pendingEpisode) {
+        setViewingEpisode(pendingEpisode);
+        setPendingEpisode(null);
+      }
+      setTimeout(() => setPaymentSuccessToast(false), 4000);
+    }, 900);
+  };
+
+  const handleAdminPinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commName.trim() || !commText.trim()) return;
-    try {
-      const res = await fetch("/api/comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          webtoonId: selectedWebtoon.id,
-          authorName: commName.trim(),
-          tierBadge: commTier,
-          content: commText.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (data.comment) {
-        setComments((prev) => [data.comment, ...prev]);
-      }
-      setCommText("");
-      showToast("소중한 응원 메시지가 등록되었습니다!");
-    } catch {
-      showToast("댓글 등록 중 오류가 발생했습니다.");
+    if (pinInput.trim() === ADMIN_DEFAULT_PIN) {
+      updateAdminReviewMode(true);
+      setPinInput("");
+      setPinError("");
+    } else {
+      setPinError("PIN 번호가 올바르지 않습니다. (기본 PIN: 2026)");
     }
-  }
+  };
 
-  function openSubscribeModal(tierName: string, priceKrw: number) {
-    setModalTierName(tierName);
-    setModalTierPrice(priceKrw);
-    setModalOpen(true);
-  }
+  const handleDisableAdminMode = () => {
+    updateAdminReviewMode(false);
+    setPinInput("");
+    setPinError("");
+  };
 
-  async function processSubscription() {
-    setSubmittingPay(true);
-    const storeId = process.env.NEXT_PUBLIC_PORTONE_STORE_ID;
-    const channelKey = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY;
-    const nameToUse = customerName.trim() || "달빛 독자";
-    const emailToUse = customerEmail.trim() || "reader@example.com";
-
-    let billingKey: string | undefined;
-
-    try {
-      if (
-        window.PortOne &&
-        storeId &&
-        channelKey &&
-        !storeId.startsWith("store-your-") &&
-        !channelKey.startsWith("channel-key-your-")
-      ) {
-        const response = await window.PortOne.requestIssueBillingKey({
-          storeId,
-          channelKey,
-          billingKeyMethod: "CARD",
-          issueName: `${modalTierName} 월정액 구독`,
-          customer: {
-            customerId: `user_${Date.now()}`,
-            fullName: nameToUse,
-            email: emailToUse,
-          },
-        });
-
-        if (response.code != null) {
-          showToast(`결제가 취소되었습니다: ${response.message || "취소됨"}`);
-          setSubmittingPay(false);
-          return;
-        }
-        billingKey = response.billingKey;
-      }
-
-      const res = await fetch("/api/payments/portone", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          billingKey,
-          webtoonId: selectedWebtoon.id,
-          customerName: nameToUse,
-          customerEmail: emailToUse,
-          tierName: modalTierName,
-          priceKrw: modalTierPrice,
-          referralCode: referralInput.trim() || null,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setModalOpen(false);
-        await loadSubscriptions();
-        await loadInitialData();
-        showToast(
-          `${modalTierName} (월 ${modalTierPrice.toLocaleString()}원) 구독이 완료되었습니다!`
-        );
-      } else {
-        showToast(data.error || "결제 처리에 실패했습니다.");
-      }
-    } catch {
-      showToast("결제 요청 중 오류가 발생했습니다.");
-    } finally {
-      setSubmittingPay(false);
-    }
-  }
-
-  async function handlePublishWebtoon(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newTitle.trim() || !newAuthor.trim()) {
-      showToast("작품명과 작가명을 입력해 주세요.");
-      return;
-    }
-    setPublishing(true);
-    try {
-      const res = await fetch("/api/webtoons", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTitle.trim(),
-          author: newAuthor.trim(),
-          genre: newGenre,
-          subtitle: newSubtitle.trim(),
-          description: newDesc.trim(),
-          poster: "/images/poster-seoul-moon.jpg",
-          ep1Title: "제1화: 프롤로그",
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.webtoon) {
-        setWebtoons((prev) => [...prev, data.webtoon]);
-        setSelectedId(data.webtoon.id);
-        setNewTitle("");
-        setNewAuthor("");
-        setNewSubtitle("");
-        setNewDesc("");
-        setActiveTab("hero");
-        showToast(`신작 《${data.webtoon.title}》이(가) 등록되었습니다!`);
-      } else {
-        showToast(data.error || "작품 등록 실패");
-      }
-    } catch {
-      showToast("작품 등록 중 오류가 발생했습니다.");
-    } finally {
-      setPublishing(false);
-    }
-  }
-
-  const navItems: { id: TabId; label: string }[] = [
-    { id: "hero", label: "작품 소개" },
-    { id: "viewer", label: "웹툰 뷰어" },
-    { id: "membership", label: "멤버십 구독" },
-    { id: "community", label: "팬덤 커뮤니티" },
-    { id: "creator", label: "작가 스튜디오" },
-    { id: "admin", label: "정산/관리" },
-  ];
+  const filteredEpisodes = EPISODES.filter((ep) => {
+    if (filterMode === "free") return ep.isFree;
+    if (filterMode === "locked") return !canAccessEpisode(ep);
+    return true;
+  });
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950 text-gray-100">
-      {/* HEADER */}
-      <header className="sticky top-0 z-40 border-b border-gray-800/80 bg-gray-950/85 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
-              <Sparkles className="w-5 h-5 text-amber-300" />
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+      {/* Header */}
+      <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-violet-500/20">
+              W
             </div>
             <div>
-              <h1 className="text-sm md:text-base font-black tracking-tight text-white">
-                달빛 웹툰 스튜디오
-              </h1>
-              <div className="flex items-center space-x-2 text-[11px]">
-                <span
-                  className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full border ${
-                    dbConnected
-                      ? "bg-emerald-950/80 text-emerald-300 border-emerald-700/70"
-                      : "bg-amber-950/80 text-amber-300 border-amber-700/70"
-                  }`}
-                >
-                  <Database className="w-3 h-3" />
-                  <span>{dbConnected ? "Neon DB 연결됨" : "로컬 프리뷰 모드"}</span>
-                </span>
+              <div className="flex items-center gap-2">
+                <h1 className="font-bold text-lg tracking-tight text-white">
+                  웹툰스튜디오스
+                </h1>
+                {/* 관리자 검수중 배지 표시 */}
+                {isAdminReviewMode && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                    관리자 검수중
+                  </span>
+                )}
               </div>
+              <p className="text-xs text-slate-400 hidden sm:block">
+                오리지널 시리즈 · 총 100화 완결 아카이브
+              </p>
             </div>
           </div>
 
-          <nav className="flex flex-wrap items-center gap-1.5">
-            {navItems.map((item) => (
+          {/* Navigation & Status */}
+          <div className="flex items-center gap-2">
+            {isMember ? (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                <Crown className="w-3.5 h-3.5 text-emerald-400" />
+                프리미엄 멤버십 활성
+              </span>
+            ) : (
+              !isAdminReviewMode && (
+                <button
+                  onClick={() => {
+                    setPendingEpisode(null);
+                    setShowPaymentModal(true);
+                  }}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition"
+                >
+                  <Crown className="w-3.5 h-3.5" />
+                  멤버십 가입
+                </button>
+              )
+            )}
+
+            <nav className="flex items-center bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
               <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === item.id
-                    ? "bg-indigo-600 text-white shadow"
-                    : "text-gray-400 hover:text-white hover:bg-gray-800/70"
+                onClick={() => setActiveTab("episodes")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  activeTab === "episodes"
+                    ? "bg-slate-700 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
-                {item.label}
+                <BookOpen className="w-3.5 h-3.5" />
+                회차 목록
               </button>
-            ))}
-          </nav>
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  activeTab === "settings"
+                    ? "bg-slate-700 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                설정
+                {isAdminReviewMode && (
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                )}
+              </button>
+            </nav>
+          </div>
         </div>
       </header>
 
-      {/* MAIN */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-10">
-        {/* WEBTOON SWITCHER */}
-        {webtoons.length > 1 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-gray-400 font-semibold mr-1">연재 작품 선택:</span>
-            {webtoons.map((w) => (
-              <button
-                key={w.id}
-                onClick={() => setSelectedId(w.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-                  w.id === selectedWebtoon.id
-                    ? "bg-indigo-600/20 border-indigo-500 text-indigo-300"
-                    : "bg-gray-900 border-gray-800 text-gray-400 hover:text-white"
-                }`}
-              >
-                《{w.title}》 · {w.author}
-              </button>
-            ))}
+      {/* Payment Completion Toast */}
+      {paymentSuccessToast && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-900/95 border border-emerald-500/50 text-emerald-100 shadow-2xl">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <div className="text-sm">
+            <p className="font-semibold">멤버십 결제가 완료되었습니다!</p>
+            <p className="text-xs text-emerald-300">
+              6화~100화 모든 유료 회차 잠금이 자동 해제되었습니다.
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* TAB: HERO */}
-        {activeTab === "hero" && (
-          <section className="space-y-10 animate-fade-in">
-            <div className="glass-panel rounded-3xl border border-indigo-500/30 p-6 md:p-10 glow-effect grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              <div className="lg:col-span-7 space-y-5">
-                <span className="inline-block text-xs font-bold text-amber-300 bg-amber-950/70 border border-amber-700/60 px-3 py-1 rounded-full">
-                  {selectedWebtoon.badge}
-                </span>
-                <h2 className="text-3xl md:text-4xl font-black text-white leading-tight">
-                  {selectedWebtoon.title}
-                </h2>
-                <p className="text-indigo-300 font-semibold text-sm md:text-base">
-                  {selectedWebtoon.subtitle}
-                </p>
-                <p className="text-gray-300 text-sm leading-relaxed">
-                  {selectedWebtoon.description}
-                </p>
-
-                <div className="grid grid-cols-3 gap-3 pt-2">
-                  <div className="bg-gray-900/90 border border-gray-800 rounded-2xl p-3 text-center">
-                    <div className="text-[11px] text-gray-400">분량</div>
-                    <div className="text-sm font-black text-white mt-0.5">
-                      {selectedWebtoon.stats?.eps || "100화 완결"}
-                    </div>
+      {/* Main Content */}
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6">
+        {activeTab === "episodes" ? (
+          <div className="space-y-6">
+            {/* Series Banner */}
+            <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 p-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 text-xs font-semibold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2.5 py-1 rounded-full">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    스튜디오 독점 연재작 · 1~5화 무료 / 6~100화 멤버십
                   </div>
-                  <div className="bg-gray-900/90 border border-gray-800 rounded-2xl p-3 text-center">
-                    <div className="text-[11px] text-gray-400">회당 컷수</div>
-                    <div className="text-sm font-black text-amber-300 mt-0.5">
-                      {selectedWebtoon.stats?.cuts || "50~60컷"}
-                    </div>
-                  </div>
-                  <div className="bg-gray-900/90 border border-gray-800 rounded-2xl p-3 text-center">
-                    <div className="text-[11px] text-gray-400">멤버십 혜택</div>
-                    <div className="text-sm font-black text-emerald-300 mt-0.5">
-                      {selectedWebtoon.stats?.perk || "2주 선공개"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <button
-                    onClick={() => setActiveTab("viewer")}
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm transition shadow-lg flex items-center space-x-2"
-                  >
-                    <BookOpen className="w-4 h-4" />
-                    <span>제1화 무료 감상하기</span>
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("membership")}
-                    className="px-6 py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-amber-300 font-bold text-sm border border-amber-500/40 transition flex items-center space-x-2"
-                  >
-                    <Crown className="w-4 h-4" />
-                    <span>멤버십 구독하기</span>
-                  </button>
-                  <button
-                    onClick={handleLike}
-                    className="px-4 py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-rose-400 font-bold text-sm border border-gray-800 transition flex items-center space-x-1.5"
-                  >
-                    <Heart className="w-4 h-4" />
-                    <span>{selectedWebtoon.likes}</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="lg:col-span-5">
-                <img
-                  src={selectedWebtoon.poster}
-                  alt={selectedWebtoon.title}
-                  className="rounded-2xl w-full max-h-[420px] object-cover shadow-2xl border border-gray-700"
-                />
-              </div>
-            </div>
-
-            {/* CHARACTERS */}
-            {selectedWebtoon.characters && selectedWebtoon.characters.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-xl font-black text-white flex items-center space-x-2">
-                  <Users className="w-5 h-5 text-indigo-400" />
-                  <span>주요 등장인물</span>
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {selectedWebtoon.characters.map((ch, idx) => (
-                    <div
-                      key={idx}
-                      className="glass-panel rounded-2xl border border-gray-800 p-5 space-y-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${ch.badgeClass}`}
-                        >
-                          {ch.badge}
-                        </span>
-                        <span className="text-[11px] text-gray-500">{ch.ref}</span>
-                      </div>
-                      <div>
-                        <h4 className="text-lg font-black text-white">{ch.name}</h4>
-                        <p className="text-xs text-indigo-300">{ch.role}</p>
-                      </div>
-                      <blockquote className="text-xs text-gray-300 italic bg-gray-900/80 p-3 rounded-xl border-l-2 border-indigo-500">
-                        {ch.quote}
-                      </blockquote>
-                      <div className="text-xs text-gray-400 space-y-1 pt-1">
-                        <p>
-                          <strong className="text-gray-200">특징:</strong> {ch.trait}
-                        </p>
-                        <p>
-                          <strong className="text-gray-200">욕망:</strong> {ch.desire}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* TAB: VIEWER */}
-        {activeTab === "viewer" && (
-          <section className="space-y-6 animate-fade-in">
-            <div className="glass-panel rounded-2xl border border-gray-800 p-5 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black text-white">{selectedWebtoon.ep1_title}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{selectedWebtoon.ep1_subtitle}</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setViewerMode("cuts")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    viewerMode === "cuts"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-gray-800 text-gray-300 hover:text-white"
-                  }`}
-                >
-                  원고 컷 뷰어
-                </button>
-                <button
-                  onClick={() => setViewerMode("script")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    viewerMode === "script"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-gray-800 text-gray-300 hover:text-white"
-                  }`}
-                >
-                  콘티 스크립트
-                </button>
-              </div>
-            </div>
-
-            {viewerMode === "cuts" ? (
-              <div className="max-w-2xl mx-auto space-y-6">
-                {(selectedWebtoon.cuts || []).map((cut, i) => (
-                  <div
-                    key={i}
-                    className="bg-gray-900 rounded-2xl overflow-hidden border border-gray-800 shadow-xl"
-                  >
-                    <img
-                      src={cut.img}
-                      alt={`웹툰 컷 ${i + 1}`}
-                      className="w-full object-cover"
-                    />
-                    <div className="p-4 text-xs text-gray-300 border-t border-gray-800">
-                      {cut.caption}
-                    </div>
-                  </div>
-                ))}
-
-                <div className="glass-panel rounded-2xl border border-amber-500/40 p-6 text-center space-y-3">
-                  <Crown className="w-8 h-8 text-amber-300 mx-auto" />
-                  <h3 className="text-lg font-black text-white">
-                    {selectedWebtoon.ep2_title} (멤버십 선공개)
-                  </h3>
-                  <p className="text-xs text-gray-400">
-                    월 2,900원 멤버십으로 2주 빠른 선공개 원고를 바로 감상하세요.
+                  <h2 className="text-2xl font-bold text-white">
+                    달빛 아래의 연대기 (전체 100화)
+                  </h2>
+                  <p className="text-sm text-slate-300 max-w-2xl">
+                    1화부터 5화까지는 누구나 무료로 감상할 수 있으며, 6화부터 100화까지는
+                    멤버십 결제 완료 시 즉시 전체 잠금 해제됩니다.
                   </p>
-                  <button
-                    onClick={() => setActiveTab("membership")}
-                    className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs transition"
-                  >
-                    멤버십 요금제 보기
-                  </button>
+                </div>
+
+                <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0">
+                  {isAdminReviewMode ? (
+                    <div className="px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>관리자 검수 모드 활성 (1~100화 전체 열람 가능)</span>
+                    </div>
+                  ) : isMember ? (
+                    <div className="px-4 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs flex items-center gap-2">
+                      <Unlock className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>멤버십 인증 완료 (1~100화 전체 잠금 해제됨)</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setPendingEpisode(EPISODES[5]);
+                        setShowPaymentModal(true);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold shadow-lg shadow-violet-600/25 transition flex items-center justify-center gap-2"
+                    >
+                      <Crown className="w-4 h-4" />
+                      멤버십 결제하고 6~100화 해제
+                    </button>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {(selectedWebtoon.script_lines || []).map((line, idx) => (
-                  <div
-                    key={idx}
-                    className="glass-panel rounded-2xl border border-gray-800 p-5 space-y-2"
+            </section>
+
+            {/* Filter & Summary Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setFilterMode("all")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                    filterMode === "all"
+                      ? "bg-slate-800 text-white border-slate-600"
+                      : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200"
+                  }`}
+                >
+                  전체 ({TOTAL_EPISODES})
+                </button>
+                <button
+                  onClick={() => setFilterMode("free")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                    filterMode === "free"
+                      ? "bg-slate-800 text-white border-slate-600"
+                      : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200"
+                  }`}
+                >
+                  무료 공개 (1~5화)
+                </button>
+                <button
+                  onClick={() => setFilterMode("locked")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                    filterMode === "locked"
+                      ? "bg-slate-800 text-white border-slate-600"
+                      : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200"
+                  }`}
+                >
+                  잠긴 회차 (
+                  {EPISODES.filter((ep) => !canAccessEpisode(ep)).length})
+                </button>
+              </div>
+
+              <div className="text-xs text-slate-400">
+                열람 가능:{" "}
+                <strong className="text-slate-200">
+                  {EPISODES.filter((ep) => canAccessEpisode(ep)).length}화
+                </strong>{" "}
+                / {TOTAL_EPISODES}화
+              </div>
+            </div>
+
+            {/* Episode List */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {filteredEpisodes.map((ep) => {
+                const unlocked = canAccessEpisode(ep);
+                return (
+                  <button
+                    key={ep.id}
+                    onClick={() => handleEpisodeClick(ep)}
+                    className={`group text-left p-3.5 rounded-xl border transition flex items-center gap-3.5 ${
+                      unlocked
+                        ? "bg-slate-900/80 border-slate-800 hover:border-slate-600 hover:bg-slate-900"
+                        : "bg-slate-900/40 border-slate-800/80 hover:border-violet-500/50 hover:bg-slate-900/70"
+                    }`}
                   >
-                    <span className="text-xs font-bold text-indigo-400">{line.cut}</span>
-                    <p className="text-sm text-gray-200">{line.scene}</p>
-                    <p className="text-xs text-amber-300 bg-gray-900 p-3 rounded-xl border border-gray-800">
-                      {line.dialogue}
+                    {/* Thumbnail */}
+                    <div
+                      className={`relative w-16 h-16 rounded-lg bg-gradient-to-br ${ep.thumbnailColor} flex flex-col items-center justify-center shrink-0 overflow-hidden`}
+                    >
+                      <span className="text-xs font-bold text-white/90">
+                        EP.{ep.id}
+                      </span>
+                      <span className="text-[10px] text-white/75">
+                        {ep.cutsCount}컷
+                      </span>
+                      {!unlocked && (
+                        <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-[1px] flex items-center justify-center">
+                          <Lock className="w-5 h-5 text-slate-200" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-sm text-white group-hover:text-violet-300 transition">
+                          {ep.title}
+                        </span>
+                        {ep.isFree ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                            무료
+                          </span>
+                        ) : isAdminReviewMode && !isMember ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            검수 해제
+                          </span>
+                        ) : isMember ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            멤버십 해제
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                            멤버십 전용
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 truncate">
+                        {ep.subtitle}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        {ep.releaseDate}
+                      </p>
+                    </div>
+
+                    {/* Right Action Indicator */}
+                    <div className="shrink-0">
+                      {unlocked ? (
+                        <div className="w-8 h-8 rounded-full bg-slate-800 group-hover:bg-violet-600/20 flex items-center justify-center text-slate-300 group-hover:text-violet-300 transition">
+                          <Eye className="w-4 h-4" />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 group-hover:text-violet-300 transition">
+                          <Lock className="w-4 h-4" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Settings Tab */
+          <div className="max-w-2xl mx-auto space-y-6">
+            {/* 1. 설정 탭 상단: 관리자 전용 검수 모드 */}
+            <section className="rounded-2xl border border-amber-500/30 bg-slate-900 p-6 shadow-lg">
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-bold text-white">
+                        관리자 전용 검수 모드
+                      </h2>
+                      {isAdminReviewMode && (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          활성화됨
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      스튜디오 내부 검수 및 QA 목적의 전체 회차(1~100화) 잠금 해제 기능입니다.
                     </p>
                   </div>
-                ))}
+                </div>
               </div>
-            )}
-          </section>
-        )}
 
-        {/* TAB: MEMBERSHIP */}
-        {activeTab === "membership" && (
-          <section className="space-y-8 animate-fade-in">
-            <div className="glass-panel p-5 rounded-3xl border border-emerald-500/30 flex flex-wrap items-center justify-between gap-4">
-              <div className="space-y-1">
-                <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950 px-2.5 py-0.5 rounded-full border border-emerald-700">
-                  6 : 4 창작자 상생 모델
-                </span>
-                <h3 className="text-lg font-black text-white">
-                  구독료 60% 플랫폼 · 40% 작가 직접 배분
-                </h3>
-                <p className="text-xs text-gray-400">
-                  독자가 월 ₩4,900을 구독하면 ₩2,940은 플랫폼 운영에,{" "}
-                  <strong className="text-emerald-300">₩1,960(40%)은 작품 작가</strong>에게
-                  투명하게 정산됩니다.
-                </p>
-              </div>
-              <button
-                onClick={() => setActiveTab("admin")}
-                className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition"
-              >
-                실시간 정산 현황 보기
-              </button>
-            </div>
-
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl md:text-3xl font-black text-white">
-                공식 멤버십 요금제 선택
-              </h2>
-              <p className="text-gray-400 text-xs md:text-sm max-w-xl mx-auto">
-                포털 수수료 없이 작가에게 직접 후원하고, 모든 연재 작품의 선공개 원고와 비하인드
-                콘티 혜택을 누리세요.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Tier 1 */}
-              <div className="glass-panel p-6 rounded-3xl border border-gray-800 space-y-6 flex flex-col justify-between">
-                <div className="space-y-4">
-                  <span className="inline-block bg-gray-800 text-gray-300 text-xs font-bold px-3 py-1 rounded-full">
-                    BASIC
-                  </span>
-                  <h3 className="text-2xl font-bold text-white">달빛 라이트</h3>
-                  <div className="flex items-baseline space-x-1">
-                    <span className="text-3xl font-black text-white">월 2,900</span>
-                    <span className="text-gray-400 text-xs">원</span>
+              {isAdminReviewMode ? (
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-amber-200 flex items-center gap-1.5">
+                      <Unlock className="w-4 h-4 text-amber-400" />
+                      관리자 검수 권한으로 1~100화 잠금이 해제되었습니다.
+                    </p>
+                    <p className="text-xs text-amber-300/80">
+                      상단 헤더에 &apos;관리자 검수중&apos; 배지가 표시되며 멤버십 결제 없이 모든 회차를 검수할 수 있습니다.
+                    </p>
                   </div>
-                  <ul className="space-y-2.5 text-xs text-gray-300 border-t border-gray-800 pt-4">
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-indigo-400" />
-                      <span>전 작품 1주일 최신화 미리보기</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-indigo-400" />
-                      <span>멤버십 독자 전용 댓글 작성</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-indigo-400" />
-                      <span>HD 고화질 모바일 뷰어 제공</span>
-                    </li>
-                  </ul>
-                </div>
-                <button
-                  onClick={() => openSubscribeModal("달빛 라이트", 2900)}
-                  className="w-full py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold text-sm border border-gray-700 transition"
-                >
-                  구독하기
-                </button>
-              </div>
-
-              {/* Tier 2 */}
-              <div className="glass-panel p-6 rounded-3xl border-2 border-indigo-500 glow-effect space-y-6 flex flex-col justify-between relative bg-gradient-to-b from-indigo-950/40 to-gray-950">
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-[10px] font-black tracking-widest px-3 py-1 rounded-full uppercase shadow">
-                  POPULAR CHOICE
-                </div>
-                <div className="space-y-4">
-                  <span className="inline-block bg-indigo-950 text-indigo-300 text-xs font-bold px-3 py-1 rounded-full border border-indigo-700">
-                    SPECIAL
-                  </span>
-                  <h3 className="text-2xl font-bold text-white">달동네 스페셜</h3>
-                  <div className="flex items-baseline space-x-1">
-                    <span className="text-3xl font-black text-amber-300">월 4,900</span>
-                    <span className="text-gray-400 text-xs">원</span>
-                  </div>
-                  <ul className="space-y-2.5 text-xs text-gray-200 border-t border-indigo-500/30 pt-4">
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-amber-300" />
-                      <span>전 작품 2주 선공개 원고 무제한 열람</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-amber-300" />
-                      <span>작가 비하인드 콘티 & 미공개 러프 스케치</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-amber-300" />
-                      <span>스페셜 독자 배지 & 월간 Q&A 참여</span>
-                    </li>
-                  </ul>
-                </div>
-                <button
-                  onClick={() => openSubscribeModal("달동네 스페셜", 4900)}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm shadow-lg transition"
-                >
-                  지금 구독 시작하기
-                </button>
-              </div>
-
-              {/* Tier 3 */}
-              <div className="glass-panel p-6 rounded-3xl border border-amber-500/40 space-y-6 flex flex-col justify-between">
-                <div className="space-y-4">
-                  <span className="inline-block bg-amber-950 text-amber-300 text-xs font-bold px-3 py-1 rounded-full border border-amber-700">
-                    VIP PATRON
-                  </span>
-                  <h3 className="text-2xl font-bold text-white">VIP 후원자</h3>
-                  <div className="flex items-baseline space-x-1">
-                    <span className="text-3xl font-black text-white">월 9,900</span>
-                    <span className="text-gray-400 text-xs">원</span>
-                  </div>
-                  <ul className="space-y-2.5 text-xs text-gray-300 border-t border-gray-800 pt-4">
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-amber-400" />
-                      <span>달동네 스페셜 모든 혜택 포함</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-amber-400" />
-                      <span>단행본/굿즈 우선 구매 및 20% 할인</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-amber-400" />
-                      <span>엔딩 크레딧 VIP 후원자 닉네임 등재</span>
-                    </li>
-                  </ul>
-                </div>
-                <button
-                  onClick={() => openSubscribeModal("VIP 후원자", 9900)}
-                  className="w-full py-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-sm border border-amber-500/50 transition"
-                >
-                  VIP 후원하기
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* TAB: COMMUNITY */}
-        {activeTab === "community" && (
-          <section className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-black text-white flex items-center space-x-2">
-                <MessageSquare className="w-6 h-6 text-indigo-400" />
-                <span>《{selectedWebtoon.title}》 팬덤 커뮤니티</span>
-              </h2>
-            </div>
-
-            <form
-              onSubmit={handleAddComment}
-              className="glass-panel p-5 rounded-2xl border border-gray-800 space-y-4"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  placeholder="닉네임 (예: 옥탑방달빛)"
-                  value={commName}
-                  onChange={(e) => setCommName(e.target.value)}
-                  required
-                  className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
-                <select
-                  value={commTier}
-                  onChange={(e) => setCommTier(e.target.value)}
-                  className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="달빛 라이트">달빛 라이트</option>
-                  <option value="달동네 스페셜">달동네 스페셜</option>
-                  <option value="VIP 후원자">VIP 후원자</option>
-                </select>
-              </div>
-              <textarea
-                rows={3}
-                placeholder="작가님과 작품에 대한 응원 메시지를 남겨주세요..."
-                value={commText}
-                onChange={(e) => setCommText(e.target.value)}
-                required
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-              />
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition"
-                >
-                  응원글 등록하기
-                </button>
-              </div>
-            </form>
-
-            <div className="space-y-3">
-              {comments.map((c) => (
-                <div
-                  key={c.id}
-                  className="p-4 bg-gray-900/90 rounded-xl border border-gray-800 space-y-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-xs text-white">{c.author_name}</span>
-                      <span className="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800">
-                        {c.tier_badge}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-gray-500">
-                      {new Date(c.created_at).toLocaleDateString("ko-KR")}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-300">{c.content}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* TAB: CREATOR STUDIO */}
-        {activeTab === "creator" && (
-          <section className="space-y-6 animate-fade-in">
-            <div className="glass-panel p-6 rounded-3xl border border-indigo-500/30 space-y-4">
-              <div className="flex items-center space-x-2">
-                <PenTool className="w-5 h-5 text-indigo-400" />
-                <h2 className="text-xl font-black text-white">작가 스튜디오 — 신작 등록</h2>
-              </div>
-              <p className="text-xs text-gray-400">
-                신규 웹툰을 등록하면 Neon PostgreSQL 데이터베이스에 즉시 저장되고 구독 서비스에
-                노출됩니다.
-              </p>
-
-              <form onSubmit={handlePublishWebtoon} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input
-                    type="text"
-                    placeholder="작품명 (예: 네오 서울의 밤)"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    required
-                    className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="작가명"
-                    value={newAuthor}
-                    onChange={(e) => setNewAuthor(e.target.value)}
-                    required
-                    className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                  />
-                  <select
-                    value={newGenre}
-                    onChange={(e) => setNewGenre(e.target.value)}
-                    className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
+                  <button
+                    onClick={handleDisableAdminMode}
+                    className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center justify-center gap-1.5 shrink-0 transition"
                   >
-                    <option value="드라마">드라마</option>
-                    <option value="SF/스릴러">SF/스릴러</option>
-                    <option value="로맨스">로맨스</option>
-                    <option value="판타지">판타지</option>
-                  </select>
+                    <LogOut className="w-3.5 h-3.5" />
+                    검수 모드 종료
+                  </button>
                 </div>
-                <input
-                  type="text"
-                  placeholder="한 줄 카피 (부제목)"
-                  value={newSubtitle}
-                  onChange={(e) => setNewSubtitle(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                />
-                <textarea
-                  rows={3}
-                  placeholder="작품 시놉시스 설명"
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-                />
-                <button
-                  type="submit"
-                  disabled={publishing}
-                  className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs transition"
-                >
-                  {publishing ? "등록 중..." : "작품 등록 및 연재 시작"}
-                </button>
-              </form>
-            </div>
-          </section>
-        )}
-
-        {/* TAB: ADMIN / REVENUE SPLIT */}
-        {activeTab === "admin" && (
-          <section className="space-y-6 animate-fade-in">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="w-6 h-6 text-emerald-400" />
-              <h2 className="text-2xl font-black text-white">실시간 구독 & 6:4 정산 대시보드</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="glass-panel p-5 rounded-2xl border border-gray-800">
-                <div className="text-xs text-gray-400">총 활성 구독</div>
-                <div className="text-2xl font-black text-white mt-1">
-                  {summary.totalSubscriptions.toLocaleString()}건
-                </div>
-              </div>
-              <div className="glass-panel p-5 rounded-2xl border border-gray-800">
-                <div className="text-xs text-gray-400">월 누적 구독 매출</div>
-                <div className="text-2xl font-black text-amber-300 mt-1">
-                  ₩{summary.monthlyRevenueKrw.toLocaleString()}
-                </div>
-              </div>
-              <div className="glass-panel p-5 rounded-2xl border border-emerald-500/30">
-                <div className="text-xs text-emerald-300">작가 정산금 (40%)</div>
-                <div className="text-2xl font-black text-emerald-400 mt-1">
-                  ₩{summary.creatorShareKrw.toLocaleString()}
-                </div>
-              </div>
-              <div className="glass-panel p-5 rounded-2xl border border-indigo-500/30">
-                <div className="text-xs text-indigo-300">플랫폼 운영 (60%)</div>
-                <div className="text-2xl font-black text-indigo-400 mt-1">
-                  ₩{summary.platformShareKrw.toLocaleString()}
-                </div>
-              </div>
-            </div>
-
-            <div className="glass-panel p-5 rounded-2xl border border-gray-800 space-y-3">
-              <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                <Layers className="w-4 h-4 text-indigo-400" />
-                <span>최근 구독 결제 내역 (Neon DB)</span>
-              </h3>
-              {subscriptions.length === 0 ? (
-                <p className="text-xs text-gray-500 py-4">
-                  아직 DB에 기록된 신규 구독 결제가 없습니다. 멤버십 탭에서 테스트 결제를
-                  진행해 보세요.
-                </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead className="text-gray-400 border-b border-gray-800">
-                      <tr>
-                        <th className="py-2 pr-4">구독자</th>
-                        <th className="py-2 pr-4">요금제</th>
-                        <th className="py-2 pr-4">결제금액</th>
-                        <th className="py-2 pr-4">작가 배분(40%)</th>
-                        <th className="py-2">상태</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-800/60">
-                      {subscriptions.map((s) => (
-                        <tr key={s.id}>
-                          <td className="py-2.5 pr-4 text-white font-semibold">
-                            {s.customer_name}
-                          </td>
-                          <td className="py-2.5 pr-4 text-indigo-300">{s.tier_name}</td>
-                          <td className="py-2.5 pr-4">₩{s.price_krw.toLocaleString()}</td>
-                          <td className="py-2.5 pr-4 text-emerald-400">
-                            ₩{s.creator_share_krw.toLocaleString()}
-                          </td>
-                          <td className="py-2.5">
-                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px]">
-                              {s.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <form onSubmit={handleAdminPinSubmit} className="space-y-3">
+                  <label className="block text-xs font-medium text-slate-300">
+                    관리자 PIN 번호 입력 (기본 PIN: 2026)
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={8}
+                      value={pinInput}
+                      onChange={(e) => {
+                        setPinInput(e.target.value);
+                        if (pinError) setPinError("");
+                      }}
+                      placeholder="PIN 4자리 입력 (예: 2026)"
+                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold transition shrink-0"
+                    >
+                      검수 모드 잠금 해제
+                    </button>
+                  </div>
+                  {pinError && (
+                    <p className="text-xs text-rose-400 flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      {pinError}
+                    </p>
+                  )}
+                </form>
               )}
-            </div>
-          </section>
+            </section>
+
+            {/* 2. 멤버십 구독 관리 섹션 */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center text-violet-400">
+                    <Crown className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      멤버십 구독 상태
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      1~5화 무료 제공 · 6~100화 멤버십 전용
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                    isMember
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      : "bg-slate-800 text-slate-400 border border-slate-700"
+                  }`}
+                >
+                  {isMember ? "멤버십 이용중" : "미가입 (무료 회원)"}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="text-xs text-slate-300 space-y-1">
+                  <p className="font-medium text-white">
+                    웹툰스튜디오스 올패스 멤버십 (월 4,900원)
+                  </p>
+                  <p className="text-slate-400">
+                    결제 완료 즉시 6화~100화 전체 잠금이 자동으로 해제됩니다.
+                  </p>
+                </div>
+
+                {isMember ? (
+                  <button
+                    onClick={() => updateMembership(false)}
+                    className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 shrink-0 transition"
+                  >
+                    멤버십 해지 (테스트 초기화)
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setPendingEpisode(null);
+                      setShowPaymentModal(true);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shrink-0 transition"
+                  >
+                    멤버십 결제하기
+                  </button>
+                )}
+              </div>
+            </section>
+          </div>
         )}
       </main>
 
-      {/* SUBSCRIBE MODAL */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-panel max-w-md w-full p-6 rounded-3xl border border-indigo-500/40 space-y-5 relative animate-fade-in">
-            <button
-              onClick={() => setModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-indigo-900/80 text-amber-300 rounded-full flex items-center justify-center mx-auto border border-indigo-500">
-                <Crown className="w-6 h-6" />
+      {/* Membership Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl space-y-5">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-500/40 flex items-center justify-center text-violet-400">
+                  <Crown className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    멤버십 전용 회차 안내
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {pendingEpisode
+                      ? `${pendingEpisode.title}부터는 멤버십 가입이 필요합니다.`
+                      : "6화~100화 전체 열람 멤버십"}
+                  </p>
+                </div>
               </div>
-              <h3 className="text-xl font-black text-white">{modalTierName} 구독</h3>
-              <p className="text-xs text-gray-400">
-                월{" "}
-                <span className="text-amber-300 font-bold">
-                  {modalTierPrice.toLocaleString()}
-                </span>
-                원으로 작가님을 직접 후원합니다.
-              </p>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="구독자 이름 (예: 홍길동)"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-              />
-              <input
-                type="email"
-                placeholder="이메일 (영수증 수신용)"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-              />
-              <input
-                type="text"
-                placeholder="친구 추천 코드 (선택사항)"
-                value={referralInput}
-                onChange={(e) => setReferralInput(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white"
-              />
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">웹툰스튜디오스 올패스</span>
+                <span className="font-bold text-white">4,900원 / 월</span>
+              </div>
+              <ul className="text-xs text-slate-400 space-y-1.5 pt-2 border-t border-slate-800/80">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  6화 ~ 100화 유료 회차 즉시 자동 잠금 해제
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  광고 없는 고화질 스크롤 뷰어 지원
+                </li>
+              </ul>
             </div>
 
-            <div className="space-y-2 bg-gray-900 p-4 rounded-xl border border-gray-800 text-xs">
-              <div className="flex justify-between text-gray-300">
-                <span>결제 수단</span>
-                <span className="text-emerald-400 font-semibold">
-                  카카오페이 / 토스 / 신용카드 (포트원 V2)
-                </span>
-              </div>
-              <div className="flex justify-between text-gray-300 pt-2 border-t border-gray-800">
-                <span>최종 결제 금액</span>
-                <strong className="text-amber-400 text-sm">
-                  월 {modalTierPrice.toLocaleString()}원
-                </strong>
-              </div>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleCompletePayment}
+                disabled={isProcessingPayment}
+                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white text-sm font-semibold flex items-center justify-center gap-2 transition"
+              >
+                <CreditCard className="w-4 h-4" />
+                {isProcessingPayment ? "결제 처리중..." : "결제 완료하기"}
+              </button>
             </div>
-
-            <button
-              onClick={processSubscription}
-              disabled={submittingPay}
-              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition shadow-lg"
-            >
-              {submittingPay ? "결제 처리 중..." : "결제 및 멤버십 시작하기"}
-            </button>
           </div>
         </div>
       )}
 
-      {/* TOAST */}
-      {toastMsg && (
-        <div className="fixed bottom-6 right-6 bg-indigo-600 text-white text-xs font-bold px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 z-50 animate-fade-in">
-          <CheckCircle2 className="w-4 h-4 text-amber-300" />
-          <span>{toastMsg}</span>
+      {/* Episode Viewer Modal */}
+      {viewingEpisode && (
+        <div className="fixed inset-0 z-50 bg-slate-950/95 flex flex-col">
+          {/* Viewer Top Bar */}
+          <div className="h-14 px-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setViewingEpisode(null)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-white">
+                    {viewingEpisode.title} - {viewingEpisode.subtitle}
+                  </span>
+                  {isAdminReviewMode && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      관리자 검수중
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                disabled={viewingEpisode.id <= 1}
+                onClick={() => {
+                  const prev = EPISODES[viewingEpisode.id - 2];
+                  if (prev && canAccessEpisode(prev)) setViewingEpisode(prev);
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 disabled:opacity-40 hover:bg-slate-700 text-xs flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                이전화
+              </button>
+              <button
+                disabled={viewingEpisode.id >= TOTAL_EPISODES}
+                onClick={() => {
+                  const next = EPISODES[viewingEpisode.id];
+                  if (next) {
+                    if (canAccessEpisode(next)) {
+                      setViewingEpisode(next);
+                    } else {
+                      setViewingEpisode(null);
+                      setPendingEpisode(next);
+                      setShowPaymentModal(true);
+                    }
+                  }
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 disabled:opacity-40 hover:bg-slate-700 text-xs flex items-center gap-1"
+              >
+                다음화
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Viewer Canvas */}
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+            <div className="w-full max-w-xl space-y-6">
+              <div
+                className={`p-8 rounded-2xl bg-gradient-to-br ${viewingEpisode.thumbnailColor} text-center space-y-2 shadow-xl`}
+              >
+                <p className="text-xs uppercase tracking-widest text-white/80">
+                  WEBTOON STUDIOS ORIGINAL
+                </p>
+                <h3 className="text-2xl font-extrabold text-white">
+                  {viewingEpisode.title}
+                </h3>
+                <p className="text-sm text-white/90">{viewingEpisode.subtitle}</p>
+                <p className="text-xs text-white/75 pt-2">
+                  총 {viewingEpisode.cutsCount}컷 분량 ·{" "}
+                  {viewingEpisode.isFree
+                    ? "무료 공개 회차"
+                    : isAdminReviewMode
+                    ? "관리자 검수 모드 열람"
+                    : "멤버십 인증 열람"}
+                </p>
+              </div>
+
+              {/* Simulated Webtoon Cuts */}
+              {Array.from({ length: 5 }, (_, i) => (
+                <div
+                  key={i}
+                  className="h-64 rounded-xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center text-slate-400 p-6 text-center"
+                >
+                  <span className="text-xs font-mono text-slate-500 mb-2">
+                    CUT #{i + 1} / {viewingEpisode.cutsCount}
+                  </span>
+                  <p className="text-sm text-slate-300">
+                    {viewingEpisode.title} 스토리보드 & 원고 렌더링 영역
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
-
-      {/* FOOTER (PG 심사 대비 사업자 정보 영역 포함) */}
-      <footer className="border-t border-gray-900 py-8 bg-gray-950 text-center text-xs text-gray-500 space-y-2 px-4">
-        <div className="flex items-center justify-center space-x-1.5 text-gray-400 font-semibold">
-          <ShieldCheck className="w-4 h-4 text-indigo-400" />
-          <span>© 2026 달빛 웹툰 스튜디오. All rights reserved.</span>
-        </div>
-        <p className="text-[11px] text-gray-600">
-          상호명: [상호명 입력] | 대표자: [대표자명] | 사업자등록번호: [000-00-00000] |
-          통신판매업신고: [제2026-서울강남-0000호]
-        </p>
-        <p className="text-[11px] text-gray-600">
-          사업장 소재지: [사업장 주소] | 고객센터: [이메일 / 연락처] | 이용약관 · 개인정보처리방침 ·
-          환불규정
-        </p>
-      </footer>
     </div>
   );
 }

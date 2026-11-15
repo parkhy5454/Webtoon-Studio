@@ -3,31 +3,6 @@
 @tailwind utilities;
 
 body {
-  background-color: #030712;
-  color: #f9fafb;
-  font-family: "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-.glass-panel {
-  background: rgba(17, 24, 39, 0.72);
-  backdrop-filter: blur(12px);
-}
-
-.glow-effect {
-  box-shadow: 0 0 32px rgba(99, 102, 241, 0.22);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.25s ease-out forwards;
+  background-color: #0f172a;
+  color: #f8fafc;
 }
