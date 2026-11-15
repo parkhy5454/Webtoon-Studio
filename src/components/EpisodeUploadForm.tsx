@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Upload, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { Upload, Plus, Trash2, CheckCircle2, ImagePlus } from 'lucide-react';
 
 export interface CutItem {
   id: number;
@@ -23,10 +23,13 @@ export default function EpisodeUploadForm({ onPublish }: Props) {
     { id: 1, imageUrl: '', description: '', sfx: '', narration: '', dialogue: '' },
   ]);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
 
-  const handleFileChange = async (cutId: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadFile = async (cutId: number, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('이미지 파일(JPG, PNG, WEBP 등)만 업로드할 수 있습니다.');
+      return;
+    }
 
     setUploadingId(cutId);
     const formData = new FormData();
@@ -51,6 +54,32 @@ export default function EpisodeUploadForm({ onPublish }: Props) {
     } finally {
       setUploadingId(null);
     }
+  };
+
+  const handleFileChange = (cutId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(cutId, file);
+  };
+
+  const handleDragOver = (cutId: number, e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggingId !== cutId) setDraggingId(cutId);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingId(null);
+  };
+
+  const handleDrop = (cutId: number, e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingId(null);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadFile(cutId, file);
   };
 
   const addCut = () => {
@@ -122,81 +151,102 @@ export default function EpisodeUploadForm({ onPublish }: Props) {
       </div>
 
       <div className="space-y-4">
-        {cuts.map((cut) => (
-          <div key={cut.id} className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-400">CUT #{cut.id}</span>
-              {cuts.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeCut(cut.id)}
-                  className="text-slate-500 hover:text-red-400"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            <div className="p-3 bg-slate-900 border border-dashed border-slate-700 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-xs rounded-lg transition">
-                  <Upload className="w-4 h-4" />
-                  <span>{uploadingId === cut.id ? '업로드 중...' : '내 컴퓨터에서 그림 파일 선택'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(cut.id, e)}
-                    className="hidden"
-                  />
-                </label>
-                {cut.imageUrl ? (
-                  <span className="text-xs text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> 이미지 등록 완료
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-400">JPG, PNG 파일을 바로 선택하세요</span>
+        {cuts.map((cut) => {
+          const isDragging = draggingId === cut.id;
+          return (
+            <div key={cut.id} className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-indigo-400">CUT #{cut.id}</span>
+                {cuts.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeCut(cut.id)}
+                    className="text-slate-500 hover:text-red-400"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 )}
               </div>
-            </div>
 
-            {cut.imageUrl && (
-              <div className="rounded-lg overflow-hidden border border-slate-800 bg-black flex justify-center p-2">
-                <img src={cut.imageUrl} alt={`CUT #${cut.id}`} className="max-h-64 object-contain" />
+              {/* 드래그 앤 드롭 + 클릭 파일 선택 통합 영역 */}
+              <div
+                onDragOver={(e) => handleDragOver(cut.id, e)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(cut.id, e)}
+                className={`p-5 rounded-xl border-2 border-dashed transition flex flex-col items-center justify-center text-center gap-2.5 ${
+                  isDragging
+                    ? 'border-yellow-400 bg-yellow-400/10 scale-[1.01]'
+                    : 'border-slate-700 bg-slate-900/80 hover:border-slate-500'
+                }`}
+              >
+                <ImagePlus className={`w-7 h-7 ${isDragging ? 'text-yellow-400' : 'text-slate-400'}`} />
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-slate-200">
+                    {isDragging
+                      ? '여기에 그림 파일을 놓으세요!'
+                      : '그림 파일을 마우스로 끌어다 놓거나(드래그), 아래 버튼을 눌러 선택하세요'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">JPG, PNG, WEBP 이미지 지원</p>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-xs rounded-lg transition">
+                    <Upload className="w-4 h-4" />
+                    <span>{uploadingId === cut.id ? '업로드 중...' : '파일 찾기'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(cut.id, e)}
+                      className="hidden"
+                    />
+                  </label>
+                  {cut.imageUrl && (
+                    <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium">
+                      <CheckCircle2 className="w-4 h-4" /> 이미지 등록 완료
+                    </span>
+                  )}
+                </div>
               </div>
-            )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {cut.imageUrl && (
+                <div className="rounded-lg overflow-hidden border border-slate-800 bg-black flex justify-center p-2">
+                  <img src={cut.imageUrl} alt={`CUT #${cut.id}`} className="max-h-64 object-contain" />
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <input
+                  type="text"
+                  value={cut.description}
+                  onChange={(e) => updateField(cut.id, 'description', e.target.value)}
+                  placeholder="장면 설명 (예: 노을 지는 옥탑방 난간)"
+                  className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                />
+                <input
+                  type="text"
+                  value={cut.sfx}
+                  onChange={(e) => updateField(cut.id, 'sfx', e.target.value)}
+                  placeholder="효과음 SFX (예: 쏴아아-, 두근)"
+                  className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                />
+              </div>
               <input
                 type="text"
-                value={cut.description}
-                onChange={(e) => updateField(cut.id, 'description', e.target.value)}
-                placeholder="장면 설명 (예: 노을 지는 옥탑방 난간)"
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                value={cut.narration}
+                onChange={(e) => updateField(cut.id, 'narration', e.target.value)}
+                placeholder="내레이션 (독백/지문)"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
               />
               <input
                 type="text"
-                value={cut.sfx}
-                onChange={(e) => updateField(cut.id, 'sfx', e.target.value)}
-                placeholder="효과음 SFX (예: 쏴아아-, 두근)"
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                value={cut.dialogue}
+                onChange={(e) => updateField(cut.id, 'dialogue', e.target.value)}
+                placeholder="캐릭터 대사"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
               />
             </div>
-            <input
-              type="text"
-              value={cut.narration}
-              onChange={(e) => updateField(cut.id, 'narration', e.target.value)}
-              placeholder="내레이션 (독백/지문)"
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
-            />
-            <input
-              type="text"
-              value={cut.dialogue}
-              onChange={(e) => updateField(cut.id, 'dialogue', e.target.value)}
-              placeholder="캐릭터 대사"
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button
