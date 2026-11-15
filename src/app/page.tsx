@@ -31,6 +31,7 @@ import {
   Coins,
   Users,
   Trash2,
+  User,
 } from 'lucide-react';
 import { EPISODES_100 } from '@/lib/episodes-100';
 
@@ -51,6 +52,7 @@ interface Episode {
 }
 
 type TabType = 'intro' | 'viewer' | 'membership' | 'community' | 'settings';
+type UserRole = 'reader' | 'creator' | 'admin';
 
 interface CommentItem {
   id: string;
@@ -62,9 +64,10 @@ interface CommentItem {
   isBest?: boolean;
 }
 
-interface CreatorAccount {
+interface UserAccount {
   id: string;
-  penName: string;
+  role: UserRole;
+  displayName: string;
   email: string;
   password: string;
   joinedAt: string;
@@ -131,13 +134,14 @@ const INITIAL_WORKS: WebtoonWork[] = [
 ];
 
 const STORAGE_KEYS = {
-  CREATORS: 'webtoon_studios_creators_v1',
-  CURRENT_USER: 'webtoon_studios_current_creator_v1',
+  USERS: 'webtoon_studios_users_v2',
+  CURRENT_USER: 'webtoon_studios_current_user_v2',
   CUSTOM_WORKS: 'webtoon_studios_custom_works_v1',
 };
 
 export default function WebtoonStudioPage() {
-  const [activeTab, setActiveTab] = useState<TabType>('viewer');
+  // 초기 홈 메인 화면을 'intro'(작품관 & 작품 소개 홈)로 설정
+  const [activeTab, setActiveTab] = useState<TabType>('intro');
 
   // 다중 작품(공유 플랫폼) 상태
   const [works, setWorks] = useState<WebtoonWork[]>(INITIAL_WORKS);
@@ -153,11 +157,12 @@ export default function WebtoonStudioPage() {
   const [adminError, setAdminError] = useState<string>('');
   const [adminSuccessMsg, setAdminSuccessMsg] = useState<string>('');
 
-  // 작가 회원가입 / 로그인 상태 (설정 탭 내 작가 스튜디오)
-  const [creators, setCreators] = useState<CreatorAccount[]>([]);
-  const [currentCreator, setCurrentCreator] = useState<CreatorAccount | null>(null);
+  // 통합 회원(일반 독자 / 작가 / 관리자) 계정 상태
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
-  const [penNameInput, setPenNameInput] = useState<string>('');
+  const [signupRole, setSignupRole] = useState<'reader' | 'creator'>('reader');
+  const [displayNameInput, setDisplayNameInput] = useState<string>('');
   const [emailInput, setEmailInput] = useState<string>('');
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
@@ -186,16 +191,20 @@ export default function WebtoonStudioPage() {
     setTimeout(() => setToastMsg(null), 2800);
   };
 
-  // 로컬 스토리지에서 작가 계정 및 등록된 공유 작품 불러오기
+  // 로컬 스토리지에서 회원 계정 및 등록된 공유 작품 불러오기
   useEffect(() => {
     try {
-      const savedCreators = localStorage.getItem(STORAGE_KEYS.CREATORS);
-      if (savedCreators) {
-        setCreators(JSON.parse(savedCreators));
+      const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+      if (savedUsers) {
+        setUsers(JSON.parse(savedUsers));
       }
-      const savedUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-      if (savedUser) {
-        setCurrentCreator(JSON.parse(savedUser));
+      const savedCurrent = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+      if (savedCurrent) {
+        const parsedUser: UserAccount = JSON.parse(savedCurrent);
+        setCurrentUser(parsedUser);
+        if (parsedUser.role === 'admin') {
+          setIsAdminReview(true);
+        }
       }
       const savedWorks = localStorage.getItem(STORAGE_KEYS.CUSTOM_WORKS);
       if (savedWorks) {
@@ -219,6 +228,13 @@ export default function WebtoonStudioPage() {
     }
   };
 
+  // 상단 왼쪽 로고/타이틀 클릭 시 홈 메인 화면으로 이동
+  const handleGoHome = () => {
+    setIsFullscreen(false);
+    setActiveTab('intro');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // 현재 선택된 작품 & 회차
   const currentWork: WebtoonWork =
     works.find((w) => w.id === selectedWorkId) || works[0];
@@ -234,8 +250,8 @@ export default function WebtoonStudioPage() {
   // 열람 가능 여부 (1~5화 무료, 멤버십/관리자 검수 또는 본인 작품일 때 열람 가능)
   const canAccessEpisode = (work: WebtoonWork, epNum: number) => {
     if (epNum <= 5) return true;
-    if (isMember || isAdminReview) return true;
-    if (currentCreator && work.authorId === currentCreator.id) return true;
+    if (isMember || isAdminReview || currentUser?.role === 'admin') return true;
+    if (currentUser && work.authorId === currentUser.id) return true;
     return false;
   };
 
@@ -267,29 +283,42 @@ export default function WebtoonStudioPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 관리자 검수 모드 핸들러
+  // 관리자 검수 모드 핸들러 (PIN 2026)
   const handleAdminUnlock = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminPinInput.trim() === '2026') {
+      const adminAccount: UserAccount = {
+        id: 'admin-master',
+        role: 'admin',
+        displayName: '총괄 관리자',
+        email: 'admin@webtoonstudios.kr',
+        password: '',
+        joinedAt: '2026',
+      };
       setIsAdminReview(true);
+      setCurrentUser(adminAccount);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
       setAdminError('');
-      setAdminSuccessMsg('관리자 검수 모드가 활성화되었습니다. 1~100화 전체 열람이 가능합니다.');
+      setAdminSuccessMsg('관리자 모드로 로그인되었습니다. 1~100화 전체 열람이 가능합니다.');
       setAdminPinInput('');
-      showToast('관리자 검수 모드 ON (전체 회차 잠금 해제)');
+      showToast('관리자 로그인 완료 (전체 회차 잠금 해제)');
     } else {
       setAdminError('PIN 번호가 일치하지 않습니다. (기본 PIN: 2026)');
       setAdminSuccessMsg('');
     }
   };
 
-  const handleAdminDisable = () => {
+  // 통합 로그아웃 (일반 독자 / 작가 / 관리자 모두 로그아웃)
+  const handleLogoutAll = () => {
+    setCurrentUser(null);
     setIsAdminReview(false);
     setAdminSuccessMsg('');
-    showToast('관리자 검수 모드가 해제되었습니다.');
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    showToast('로그아웃되었습니다.');
   };
 
-  // 작가 회원가입 / 로그인 핸들러
-  const handleCreatorAuthSubmit = (e: React.FormEvent) => {
+  // 통합 회원가입 / 로그인 핸들러 (일반 독자 & 작가)
+  const handleAuthSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
 
@@ -302,57 +331,96 @@ export default function WebtoonStudioPage() {
     }
 
     if (authMode === 'signup') {
-      const penName = penNameInput.trim();
-      if (!penName) {
-        setAuthError('활동하실 작가 필명을 입력해주세요.');
+      const name = displayNameInput.trim();
+      if (!name) {
+        setAuthError(
+          signupRole === 'creator'
+            ? '활동하실 작가 필명을 입력해주세요.'
+            : '사용하실 닉네임을 입력해주세요.'
+        );
         return;
       }
-      if (creators.some((c) => c.email === email)) {
-        setAuthError('이미 등록된 작가 이메일입니다. 로그인 탭을 이용해주세요.');
+      if (users.some((u) => u.email === email)) {
+        setAuthError('이미 가입된 이메일입니다. 로그인 탭을 이용해주세요.');
         return;
       }
-      const newAccount: CreatorAccount = {
-        id: `creator-${Date.now()}`,
-        penName,
+      const newAccount: UserAccount = {
+        id: `${signupRole}-${Date.now()}`,
+        role: signupRole,
+        displayName: name,
         email,
         password,
         joinedAt: new Date().toLocaleDateString('ko-KR'),
       };
-      const updatedCreators = [...creators, newAccount];
-      setCreators(updatedCreators);
-      setCurrentCreator(newAccount);
-      localStorage.setItem(STORAGE_KEYS.CREATORS, JSON.stringify(updatedCreators));
+      const updatedUsers = [...users, newAccount];
+      setUsers(updatedUsers);
+      setCurrentUser(newAccount);
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(newAccount));
-      setPenNameInput('');
+      setDisplayNameInput('');
       setEmailInput('');
       setPasswordInput('');
-      showToast(`${penName} 작가님, 환영합니다! 지금 바로 작품을 등록할 수 있습니다.`);
-    } else {
-      const found = creators.find(
-        (c) => c.email === email && c.password === password
+      showToast(
+        signupRole === 'creator'
+          ? `${name} 작가님, 가입을 환영합니다! 바로 작품을 등록할 수 있습니다.`
+          : `${name}님, 일반 회원으로 가입되었습니다!`
       );
+    } else {
+      // 기본 관리자 계정 로그인 지원 (admin@webtoon.kr / 2026)
+      if (email === 'admin@webtoon.kr' && password === '2026') {
+        const adminAccount: UserAccount = {
+          id: 'admin-master',
+          role: 'admin',
+          displayName: '총괄 관리자',
+          email: 'admin@webtoon.kr',
+          password: '',
+          joinedAt: '2026',
+        };
+        setCurrentUser(adminAccount);
+        setIsAdminReview(true);
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
+        setEmailInput('');
+        setPasswordInput('');
+        showToast('관리자 계정으로 로그인되었습니다.');
+        return;
+      }
+
+      const found = users.find((u) => u.email === email && u.password === password);
       if (!found) {
         setAuthError('이메일 또는 비밀번호가 올바르지 않습니다.');
         return;
       }
-      setCurrentCreator(found);
+      setCurrentUser(found);
+      setIsAdminReview(found.role === 'admin');
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(found));
       setEmailInput('');
       setPasswordInput('');
-      showToast(`${found.penName} 작가님으로 로그인되었습니다.`);
+      showToast(
+        `${found.displayName}님(${
+          found.role === 'creator' ? '작가' : '일반 회원'
+        })으로 로그인되었습니다.`
+      );
     }
   };
 
-  const handleCreatorLogout = () => {
-    setCurrentCreator(null);
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-    showToast('작가 계정에서 로그아웃되었습니다.');
+  // 일반 독자 -> 작가 전환 버튼
+  const handleUpgradeToCreator = () => {
+    if (!currentUser) return;
+    const upgraded: UserAccount = { ...currentUser, role: 'creator' };
+    const updatedUsers = users.map((u) => (u.id === currentUser.id ? upgraded : u));
+    setUsers(updatedUsers);
+    setCurrentUser(upgraded);
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(upgraded));
+    showToast(`${upgraded.displayName}님, 작가 계정으로 전환되었습니다!`);
   };
 
   // 새 웹툰 작품 등록 핸들러
   const handleCreateWork = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentCreator) return;
+    if (!currentUser || (currentUser.role !== 'creator' && currentUser.role !== 'admin')) {
+      return;
+    }
     if (!newWorkTitle.trim()) {
       showToast('작품 제목을 입력해주세요.');
       return;
@@ -362,12 +430,12 @@ export default function WebtoonStudioPage() {
     const createdWork: WebtoonWork = {
       id: createdWorkId,
       title: newWorkTitle.trim(),
-      authorName: currentCreator.penName,
-      authorId: currentCreator.id,
+      authorName: currentUser.displayName,
+      authorId: currentUser.id,
       genre: newWorkGenre.trim() || '드라마',
       synopsis:
         newWorkSynopsis.trim() ||
-        `${currentCreator.penName} 작가의 오리지널 연재 웹툰입니다.`,
+        `${currentUser.displayName} 작가의 오리지널 연재 웹툰입니다.`,
       coverImg: newWorkCover.trim(),
       subscribers: 1,
       episodes: [],
@@ -409,9 +477,11 @@ export default function WebtoonStudioPage() {
   // 새 회차(에피소드) 업로드 핸들러
   const handlePublishEpisode = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentCreator) return;
+    if (!currentUser || (currentUser.role !== 'creator' && currentUser.role !== 'admin')) {
+      return;
+    }
 
-    const myWorks = works.filter((w) => w.authorId === currentCreator.id);
+    const myWorks = works.filter((w) => w.authorId === currentUser.id);
     const activeTargetId = targetWorkId || myWorks[0]?.id;
     const targetWork = works.find((w) => w.id === activeTargetId);
 
@@ -477,13 +547,19 @@ export default function WebtoonStudioPage() {
   const handleAddComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
+    const authorLabel = currentUser
+      ? currentUser.role === 'admin'
+        ? `${currentUser.displayName} (관리자)`
+        : currentUser.role === 'creator'
+        ? `${currentUser.displayName} (작가)`
+        : currentUser.displayName
+      : isAdminReview
+      ? '웹툰스튜디오스_관리자'
+      : '비회원_독자';
+
     const item: CommentItem = {
       id: `c-${Date.now()}`,
-      author: currentCreator
-        ? `${currentCreator.penName} (작가)`
-        : isAdminReview
-        ? '웹툰스튜디오스_PD'
-        : '독자_달빛러버',
+      author: authorLabel,
       episode: currentEpisode.num,
       content: newComment.trim(),
       likes: 1,
@@ -494,9 +570,11 @@ export default function WebtoonStudioPage() {
     showToast('댓글이 등록되었습니다.');
   };
 
-  const myWorksList = currentCreator
-    ? works.filter((w) => w.authorId === currentCreator.id)
+  const myWorksList = currentUser
+    ? works.filter((w) => w.authorId === currentUser.id)
     : [];
+
+  const isLoggedIn = Boolean(currentUser || isAdminReview);
 
   // 컷 렌더링 헬퍼 (일반 뷰어 & 전체화면 리더 공용 스타일)
   const renderCutVisual = (cut: EpisodeCut, idx: number, isReaderMode = false) => {
@@ -512,7 +590,8 @@ export default function WebtoonStudioPage() {
         {/* 컷 상단 번호 & 효과음(SFX) 오버레이 */}
         <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/90 border-b border-slate-800/80">
           <span className="text-xs font-semibold tracking-wider text-amber-400/90 uppercase">
-            CUT {String(idx + 1).padStart(2, '0')} / {String(currentEpisode.cuts?.length || 1).padStart(2, '0')}
+            CUT {String(idx + 1).padStart(2, '0')} /{' '}
+            {String(currentEpisode.cuts?.length || 1).padStart(2, '0')}
           </span>
           {cut.sfx && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
@@ -592,20 +671,26 @@ export default function WebtoonStudioPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
       {/* 상단 고정 헤더 */}
       <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-indigo-600 flex items-center justify-center text-slate-950 font-black text-sm shadow shrink-0">
+        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
+          {/* 상단 왼쪽 웹툰스튜디오스 로고/타이틀 -> 클릭 시 홈 메인 화면 이동 */}
+          <button
+            type="button"
+            onClick={handleGoHome}
+            className="flex items-center gap-2.5 min-w-0 text-left group focus:outline-none"
+            title="웹툰스튜디오스 홈 메인 화면으로 이동"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-indigo-600 flex items-center justify-center text-slate-950 font-black text-sm shadow shrink-0 group-hover:scale-105 transition">
               W
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-sm sm:text-base tracking-tight text-white">
+                <span className="font-bold text-sm sm:text-base tracking-tight text-white group-hover:text-amber-300 transition">
                   웹툰스튜디오스
                 </span>
-                {isAdminReview && (
+                {(isAdminReview || currentUser?.role === 'admin') && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
                     <ShieldCheck className="w-3 h-3" />
-                    관리자 검수중
+                    관리자
                   </span>
                 )}
               </div>
@@ -613,26 +698,53 @@ export default function WebtoonStudioPage() {
                 《{currentWork.title}》 · {currentWork.authorName}
               </p>
             </div>
-          </div>
+          </button>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {currentCreator ? (
-              <button
-                type="button"
-                onClick={() => setActiveTab('settings')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition"
-              >
-                <PenTool className="w-3 h-3" />
-                {currentCreator.penName} 작가
-              </button>
+          {/* 상단 우측: 회원/작가/관리자 배지 및 원클릭 로그아웃 */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isLoggedIn ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('settings')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
+                    currentUser?.role === 'admin' || isAdminReview
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : currentUser?.role === 'creator'
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                      : 'bg-slate-800 text-slate-200 border-slate-700'
+                  }`}
+                >
+                  {currentUser?.role === 'admin' || isAdminReview ? (
+                    <ShieldCheck className="w-3 h-3" />
+                  ) : currentUser?.role === 'creator' ? (
+                    <PenTool className="w-3 h-3" />
+                  ) : (
+                    <User className="w-3 h-3 text-amber-400" />
+                  )}
+                  <span className="max-w-[84px] truncate">
+                    {currentUser ? currentUser.displayName : '관리자'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLogoutAll}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition"
+                  title="로그아웃"
+                >
+                  <LogOut className="w-3 h-3" />
+                  <span>로그아웃</span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"
                 onClick={() => setActiveTab('settings')}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
               >
-                <PenTool className="w-3 h-3 text-amber-400" />
-                작가 등록/연재
+                <LogIn className="w-3 h-3 text-amber-400" />
+                로그인 / 가입
               </button>
             )}
 
@@ -655,7 +767,7 @@ export default function WebtoonStudioPage() {
 
       {/* 메인 콘텐츠 영역 */}
       <main className="max-w-3xl mx-auto px-4 pt-5">
-        {/* ==================== 1. 작품 소개 & 공유 플랫폼 작품관 탭 ==================== */}
+        {/* ==================== 1. 홈 메인 (작품 소개 & 공유 플랫폼 작품관) 탭 ==================== */}
         {activeTab === 'intro' && (
           <div className="space-y-6">
             {/* 플랫폼 내 등록된 전체 작품 선택 카드 (공유 플랫폼 피드) */}
@@ -671,7 +783,7 @@ export default function WebtoonStudioPage() {
                   className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1"
                 >
                   <PlusCircle className="w-3.5 h-3.5" />
-                  내 작품 연재하기
+                  작품 연재하기
                 </button>
               </div>
 
@@ -782,8 +894,8 @@ export default function WebtoonStudioPage() {
                   회차 목록 ({currentWork.episodes.length}화)
                 </h2>
                 <span className="text-xs text-slate-400">
-                  {isAdminReview
-                    ? '관리자 검수 모드: 전 회차 열람 가능'
+                  {isAdminReview || currentUser?.role === 'admin'
+                    ? '관리자 모드: 전 회차 열람 가능'
                     : isMember
                     ? '멤버십 회원: 전 회차 열람 가능'
                     : '1~5화 무료 / 6화~ 멤버십'}
@@ -1092,7 +1204,7 @@ export default function WebtoonStudioPage() {
                     onClick={() => setActiveTab('settings')}
                     className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 transition"
                   >
-                    관리자 검수 PIN 입력
+                    관리자 로그인 / PIN 입력
                   </button>
                 </div>
               </div>
@@ -1222,31 +1334,37 @@ export default function WebtoonStudioPage() {
           </div>
         )}
 
-        {/* ==================== 5. 설정 탭 (작가 회원가입·로그인·작품 업로드 스튜디오 + 관리자 검수 모드) ==================== */}
+        {/* ==================== 5. 설정 탭 (일반 독자 · 작가 · 관리자 통합 계정 & 작가 스튜디오) ==================== */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            {/* (A) 작가 스튜디오: 회원가입 / 로그인 및 작품·회차 업로드 */}
+            {/* (A) 통합 회원 / 작가 / 관리자 계정 관리 */}
             <div className="p-6 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-500/30 space-y-5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center shrink-0">
-                    <PenTool className="w-5 h-5 text-indigo-300" />
+                    {currentUser?.role === 'admin' || isAdminReview ? (
+                      <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    ) : currentUser?.role === 'creator' ? (
+                      <PenTool className="w-5 h-5 text-indigo-300" />
+                    ) : (
+                      <User className="w-5 h-5 text-amber-400" />
+                    )}
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-white">
-                      작가 스튜디오 (공유 플랫폼 연재 등록)
+                      회원 · 작가 · 관리자 통합 계정
                     </h2>
                     <p className="text-xs text-slate-300">
-                      누구나 작가로 가입 후 새 웹툰과 회차 컷을 직접 업로드할 수 있습니다.
+                      일반 독자, 창작 작가, 관리자 모두 로그인 및 로그아웃할 수 있습니다.
                     </p>
                   </div>
                 </div>
 
-                {currentCreator && (
+                {isLoggedIn && (
                   <button
                     type="button"
-                    onClick={handleCreatorLogout}
-                    className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
+                    onClick={handleLogoutAll}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     로그아웃
@@ -1254,8 +1372,8 @@ export default function WebtoonStudioPage() {
                 )}
               </div>
 
-              {!currentCreator ? (
-                /* 비로그인 상태: 작가 회원가입 / 로그인 폼 */
+              {!isLoggedIn ? (
+                /* 비로그인 상태: 일반 독자 / 작가 회원가입 및 통합 로그인 폼 */
                 <div className="p-4 sm:p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-4">
                   <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-900 border border-slate-800">
                     <button
@@ -1271,7 +1389,7 @@ export default function WebtoonStudioPage() {
                       }`}
                     >
                       <UserPlus className="w-4 h-4" />
-                      작가 회원가입
+                      회원가입
                     </button>
                     <button
                       type="button"
@@ -1286,35 +1404,74 @@ export default function WebtoonStudioPage() {
                       }`}
                     >
                       <LogIn className="w-4 h-4" />
-                      작가 로그인
+                      로그인
                     </button>
                   </div>
 
-                  <form onSubmit={handleCreatorAuthSubmit} className="space-y-3">
+                  <form onSubmit={handleAuthSubmit} className="space-y-3">
                     {authMode === 'signup' && (
-                      <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">
-                          작가 필명 (활동명)
-                        </label>
-                        <input
-                          type="text"
-                          value={penNameInput}
-                          onChange={(e) => setPenNameInput(e.target.value)}
-                          placeholder="예: 달빛작가, 서울스케치"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
-                        />
-                      </div>
+                      <>
+                        {/* 회원 유형 선택: 일반 독자 vs 창작 작가 */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                            가입 유형 선택
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSignupRole('reader')}
+                              className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                                signupRole === 'reader'
+                                  ? 'bg-amber-400/20 border-amber-400 text-amber-300'
+                                  : 'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}
+                            >
+                              <User className="w-3.5 h-3.5" />
+                              일반 독자 회원
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSignupRole('creator')}
+                              className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                                signupRole === 'creator'
+                                  ? 'bg-indigo-500/25 border-indigo-400 text-indigo-200'
+                                  : 'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}
+                            >
+                              <PenTool className="w-3.5 h-3.5" />
+                              작가(창작자) 회원
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-1">
+                            {signupRole === 'creator' ? '작가 필명 (활동명)' : '독자 닉네임'}
+                          </label>
+                          <input
+                            type="text"
+                            value={displayNameInput}
+                            onChange={(e) => setDisplayNameInput(e.target.value)}
+                            placeholder={
+                              signupRole === 'creator'
+                                ? '예: 달빛작가, 서울스케치'
+                                : '예: 밤하늘독자'
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                      </>
                     )}
 
                     <div>
                       <label className="block text-xs font-medium text-slate-300 mb-1">
-                        작가 이메일
+                        이메일
                       </label>
                       <input
                         type="email"
                         value={emailInput}
                         onChange={(e) => setEmailInput(e.target.value)}
-                        placeholder="creator@example.com"
+                        placeholder="user@example.com"
                         className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
                       />
                     </div>
@@ -1344,329 +1501,386 @@ export default function WebtoonStudioPage() {
                       className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition"
                     >
                       {authMode === 'signup'
-                        ? '작가 계정 생성하고 바로 연재 시작하기'
-                        : '작가 스튜디오 로그인'}
+                        ? signupRole === 'creator'
+                          ? '작가 계정 생성하고 연재 시작하기'
+                          : '일반 독자 회원가입 완료'
+                        : '로그인'}
                     </button>
                   </form>
                 </div>
               ) : (
-                /* 로그인 상태: 작품 등록 / 회차 업로드 / 수익 정산 대시보드 */
+                /* 로그인 상태 표시 카드 */
                 <div className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-between">
+                  <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <span className="text-xs text-indigo-300 font-semibold">
-                        인증된 연재 작가
-                      </span>
-                      <p className="text-sm font-bold text-white">
-                        {currentCreator.penName} 님 ({currentCreator.email})
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                            currentUser?.role === 'admin' || isAdminReview
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : currentUser?.role === 'creator'
+                              ? 'bg-indigo-500/20 text-indigo-300'
+                              : 'bg-amber-400/20 text-amber-300'
+                          }`}
+                        >
+                          {currentUser?.role === 'admin' || isAdminReview
+                            ? '관리자 계정'
+                            : currentUser?.role === 'creator'
+                            ? '창작 작가 계정'
+                            : '일반 독자 계정'}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {currentUser?.email || 'admin@webtoonstudios.kr'}
+                        </span>
+                      </div>
+                      <p className="text-base font-bold text-white mt-1">
+                        {currentUser ? currentUser.displayName : '총괄 관리자'} 님 로그인 중
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-950/70 text-xs text-amber-300 font-bold">
-                      보유 작품 {myWorksList.length}편
-                    </span>
-                  </div>
 
-                  {/* 작가 스튜디오 내부 메뉴 탭 */}
-                  <div className="grid grid-cols-3 gap-2 p-1 rounded-xl bg-slate-950 border border-slate-800">
                     <button
                       type="button"
-                      onClick={() => setCreatorSubTab('newWork')}
-                      className={`py-2 rounded-lg text-xs font-bold transition ${
-                        creatorSubTab === 'newWork'
-                          ? 'bg-amber-400 text-slate-950'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
+                      onClick={handleLogoutAll}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-200 hover:border-rose-500/40 text-slate-200 text-xs font-bold border border-slate-700 transition flex items-center gap-1.5"
                     >
-                      1. 새 작품 등록
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCreatorSubTab('newEpisode')}
-                      className={`py-2 rounded-lg text-xs font-bold transition ${
-                        creatorSubTab === 'newEpisode'
-                          ? 'bg-amber-400 text-slate-950'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      2. 회차(컷) 업로드
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCreatorSubTab('settlement')}
-                      className={`py-2 rounded-lg text-xs font-bold transition ${
-                        creatorSubTab === 'settlement'
-                          ? 'bg-amber-400 text-slate-950'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      3. 4:6 수익 정산
+                      <LogOut className="w-3.5 h-3.5" />
+                      현재 계정 로그아웃
                     </button>
                   </div>
 
-                  {/* 서브탭 1: 새 작품 등록 */}
-                  {creatorSubTab === 'newWork' && (
-                    <form
-                      onSubmit={handleCreateWork}
-                      className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3"
-                    >
-                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <PlusCircle className="w-4 h-4 text-amber-400" />
-                        신규 웹툰 타이틀 개설
-                      </h3>
-                      <div>
-                        <label className="block text-xs text-slate-300 mb-1">
-                          작품 제목 *
-                        </label>
-                        <input
-                          type="text"
-                          value={newWorkTitle}
-                          onChange={(e) => setNewWorkTitle(e.target.value)}
-                          placeholder="예: 한강 야경의 편의점"
-                          className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                        />
-                      </div>
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs text-slate-300 mb-1">장르</label>
-                          <input
-                            type="text"
-                            value={newWorkGenre}
-                            onChange={(e) => setNewWorkGenre(e.target.value)}
-                            placeholder="로맨스 · 판타지 · 일상"
-                            className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-slate-300 mb-1">
-                            대표 썸네일 이미지 URL (선택)
-                          </label>
-                          <input
-                            type="text"
-                            value={newWorkCover}
-                            onChange={(e) => setNewWorkCover(e.target.value)}
-                            placeholder="https://..."
-                            className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-300 mb-1">
-                          작품 시놉시스 (줄거리)
-                        </label>
-                        <textarea
-                          rows={2}
-                          value={newWorkSynopsis}
-                          onChange={(e) => setNewWorkSynopsis(e.target.value)}
-                          placeholder="독자들에게 보여질 작품 소개글을 입력하세요."
-                          className="w-full rounded-xl bg-slate-900 border border-slate-700 p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                        />
-                      </div>
+                  {/* 일반 독자 계정일 때 작가 전환 안내 */}
+                  {currentUser?.role === 'reader' && (
+                    <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <p className="text-xs text-slate-300">
+                        직접 웹툰을 연재하고 싶으신가요? 클릭 한 번으로 작가 스튜디오 권한을 활성화할 수 있습니다.
+                      </p>
                       <button
-                        type="submit"
-                        className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition"
+                        type="button"
+                        onClick={handleUpgradeToCreator}
+                        className="shrink-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition"
                       >
-                        작품 등록하고 회차 업로드로 이동
+                        작가 계정으로 전환
                       </button>
-                    </form>
+                    </div>
                   )}
 
-                  {/* 서브탭 2: 회차(컷) 업로드 */}
-                  {creatorSubTab === 'newEpisode' && (
-                    <form
-                      onSubmit={handlePublishEpisode}
-                      className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-4"
-                    >
-                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <Upload className="w-4 h-4 text-amber-400" />
-                        새 회차 원고 & 컷 업로드
-                      </h3>
+                  {/* 작가 또는 관리자 계정일 때 작가 스튜디오 노출 */}
+                  {(currentUser?.role === 'creator' ||
+                    currentUser?.role === 'admin' ||
+                    isAdminReview) && (
+                    <div className="space-y-4 pt-2 border-t border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-indigo-300">
+                          작가 스튜디오 · 작품 및 회차 관리
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-950/70 text-xs text-amber-300 font-bold">
+                          내 등록 작품 {myWorksList.length}편
+                        </span>
+                      </div>
 
-                      {myWorksList.length === 0 ? (
-                        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-2">
-                          <p className="text-xs text-slate-400">
-                            먼저 [1. 새 작품 등록]에서 작품 타이틀을 개설해주세요.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setCreatorSubTab('newWork')}
-                            className="px-3 py-1.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-bold"
-                          >
-                            새 작품 등록하러 가기
-                          </button>
-                        </div>
-                      ) : (
-                        <>
+                      {/* 작가 스튜디오 내부 메뉴 탭 */}
+                      <div className="grid grid-cols-3 gap-2 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setCreatorSubTab('newWork')}
+                          className={`py-2 rounded-lg text-xs font-bold transition ${
+                            creatorSubTab === 'newWork'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          1. 새 작품 등록
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatorSubTab('newEpisode')}
+                          className={`py-2 rounded-lg text-xs font-bold transition ${
+                            creatorSubTab === 'newEpisode'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          2. 회차(컷) 업로드
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatorSubTab('settlement')}
+                          className={`py-2 rounded-lg text-xs font-bold transition ${
+                            creatorSubTab === 'settlement'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          3. 4:6 수익 정산
+                        </button>
+                      </div>
+
+                      {/* 서브탭 1: 새 작품 등록 */}
+                      {creatorSubTab === 'newWork' && (
+                        <form
+                          onSubmit={handleCreateWork}
+                          className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3"
+                        >
+                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <PlusCircle className="w-4 h-4 text-amber-400" />
+                            신규 웹툰 타이틀 개설
+                          </h3>
+                          <div>
+                            <label className="block text-xs text-slate-300 mb-1">
+                              작품 제목 *
+                            </label>
+                            <input
+                              type="text"
+                              value={newWorkTitle}
+                              onChange={(e) => setNewWorkTitle(e.target.value)}
+                              placeholder="예: 한강 야경의 편의점"
+                              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
                           <div className="grid sm:grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-xs text-slate-300 mb-1">
-                                연재할 내 작품 선택
-                              </label>
-                              <select
-                                value={targetWorkId || myWorksList[0]?.id}
-                                onChange={(e) => setTargetWorkId(e.target.value)}
-                                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
-                              >
-                                {myWorksList.map((w) => (
-                                  <option key={w.id} value={w.id}>
-                                    {w.title} (다음: 제 {w.episodes.length + 1}화)
-                                  </option>
-                                ))}
-                              </select>
+                              <label className="block text-xs text-slate-300 mb-1">장르</label>
+                              <input
+                                type="text"
+                                value={newWorkGenre}
+                                onChange={(e) => setNewWorkGenre(e.target.value)}
+                                placeholder="로맨스 · 판타지 · 일상"
+                                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                              />
                             </div>
                             <div>
                               <label className="block text-xs text-slate-300 mb-1">
-                                회차 소제목 *
+                                대표 썸네일 이미지 URL (선택)
                               </label>
                               <input
                                 type="text"
-                                value={newEpTitle}
-                                onChange={(e) => setNewEpTitle(e.target.value)}
-                                placeholder="예: 제 1화 - 비 오는 옥상에서"
+                                value={newWorkCover}
+                                onChange={(e) => setNewWorkCover(e.target.value)}
+                                placeholder="https://..."
                                 className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                               />
                             </div>
                           </div>
-
-                          {/* 컷별 입력 리스트 */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-semibold text-amber-300">
-                                컷 구성 ({newEpCuts.length}컷)
-                              </span>
-                              <button
-                                type="button"
-                                onClick={handleAddCutSlot}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700"
-                              >
-                                <PlusCircle className="w-3.5 h-3.5 text-amber-400" />
-                                컷 추가
-                              </button>
-                            </div>
-
-                            {newEpCuts.map((cut, idx) => (
-                              <div
-                                key={idx}
-                                className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-bold text-indigo-300">
-                                    CUT #{idx + 1}
-                                  </span>
-                                  {newEpCuts.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveCutSlot(idx)}
-                                      className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                      삭제
-                                    </button>
-                                  )}
-                                </div>
-
-                                <input
-                                  type="text"
-                                  value={cut.img || ''}
-                                  onChange={(e) =>
-                                    handleCutFieldChange(idx, 'img', e.target.value)
-                                  }
-                                  placeholder="컷 이미지 URL (예: /images/cut1.png 또는 https://...)"
-                                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
-                                />
-                                <div className="grid sm:grid-cols-2 gap-2">
-                                  <input
-                                    type="text"
-                                    value={cut.scene || ''}
-                                    onChange={(e) =>
-                                      handleCutFieldChange(idx, 'scene', e.target.value)
-                                    }
-                                    placeholder="장면 설명 (예: 노을 지는 옥탑방 난간)"
-                                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={cut.sfx || ''}
-                                    onChange={(e) =>
-                                      handleCutFieldChange(idx, 'sfx', e.target.value)
-                                    }
-                                    placeholder="효과음 SFX (예: 쏴아아-, 두근)"
-                                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
-                                  />
-                                </div>
-                                <input
-                                  type="text"
-                                  value={cut.narration || ''}
-                                  onChange={(e) =>
-                                    handleCutFieldChange(idx, 'narration', e.target.value)
-                                  }
-                                  placeholder="내레이션 (독백/지문)"
-                                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
-                                />
-                                <input
-                                  type="text"
-                                  value={cut.dialogue || ''}
-                                  onChange={(e) =>
-                                    handleCutFieldChange(idx, 'dialogue', e.target.value)
-                                  }
-                                  placeholder="캐릭터 대사"
-                                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
-                                />
-                              </div>
-                            ))}
+                          <div>
+                            <label className="block text-xs text-slate-300 mb-1">
+                              작품 시놉시스 (줄거리)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={newWorkSynopsis}
+                              onChange={(e) => setNewWorkSynopsis(e.target.value)}
+                              placeholder="독자들에게 보여질 작품 소개글을 입력하세요."
+                              className="w-full rounded-xl bg-slate-900 border border-slate-700 p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                            />
                           </div>
-
                           <button
                             type="submit"
-                            className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition flex items-center justify-center gap-1.5"
+                            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition"
                           >
-                            <Upload className="w-4 h-4" />
-                            회차 업로드 및 즉시 공개하기
+                            작품 등록하고 회차 업로드로 이동
                           </button>
-                        </>
+                        </form>
                       )}
-                    </form>
-                  )}
 
-                  {/* 서브탭 3: 작가 4 : 플랫폼 6 수익 정산 */}
-                  {creatorSubTab === 'settlement' && (
-                    <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
-                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <Coins className="w-4 h-4 text-amber-400" />
-                        작품별 구독 수익 정산 현황 (작가 40% : 플랫폼 60%)
-                      </h3>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                          <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5 text-indigo-400" />내 작품 총 구독자
-                          </span>
-                          <p className="text-lg font-extrabold text-white mt-1">
-                            {myWorksList.reduce((acc, w) => acc + w.subscribers, 0)}명
+                      {/* 서브탭 2: 회차(컷) 업로드 */}
+                      {creatorSubTab === 'newEpisode' && (
+                        <form
+                          onSubmit={handlePublishEpisode}
+                          className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-4"
+                        >
+                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Upload className="w-4 h-4 text-amber-400" />
+                            새 회차 원고 & 컷 업로드
+                          </h3>
+
+                          {myWorksList.length === 0 ? (
+                            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-2">
+                              <p className="text-xs text-slate-400">
+                                먼저 [1. 새 작품 등록]에서 작품 타이틀을 개설해주세요.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setCreatorSubTab('newWork')}
+                                className="px-3 py-1.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-bold"
+                              >
+                                새 작품 등록하러 가기
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="grid sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">
+                                    연재할 내 작품 선택
+                                  </label>
+                                  <select
+                                    value={targetWorkId || myWorksList[0]?.id}
+                                    onChange={(e) => setTargetWorkId(e.target.value)}
+                                    className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
+                                  >
+                                    {myWorksList.map((w) => (
+                                      <option key={w.id} value={w.id}>
+                                        {w.title} (다음: 제 {w.episodes.length + 1}화)
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">
+                                    회차 소제목 *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={newEpTitle}
+                                    onChange={(e) => setNewEpTitle(e.target.value)}
+                                    placeholder="예: 제 1화 - 비 오는 옥상에서"
+                                    className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* 컷별 입력 리스트 */}
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-amber-300">
+                                    컷 구성 ({newEpCuts.length}컷)
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={handleAddCutSlot}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700"
+                                  >
+                                    <PlusCircle className="w-3.5 h-3.5 text-amber-400" />
+                                    컷 추가
+                                  </button>
+                                </div>
+
+                                {newEpCuts.map((cut, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold text-indigo-300">
+                                        CUT #{idx + 1}
+                                      </span>
+                                      {newEpCuts.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveCutSlot(idx)}
+                                          className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                          삭제
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    <input
+                                      type="text"
+                                      value={cut.img || ''}
+                                      onChange={(e) =>
+                                        handleCutFieldChange(idx, 'img', e.target.value)
+                                      }
+                                      placeholder="컷 이미지 URL (예: /images/cut1.png 또는 https://...)"
+                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                    />
+                                    <div className="grid sm:grid-cols-2 gap-2">
+                                      <input
+                                        type="text"
+                                        value={cut.scene || ''}
+                                        onChange={(e) =>
+                                          handleCutFieldChange(idx, 'scene', e.target.value)
+                                        }
+                                        placeholder="장면 설명 (예: 노을 지는 옥탑방 난간)"
+                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={cut.sfx || ''}
+                                        onChange={(e) =>
+                                          handleCutFieldChange(idx, 'sfx', e.target.value)
+                                        }
+                                        placeholder="효과음 SFX (예: 쏴아아-, 두근)"
+                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={cut.narration || ''}
+                                      onChange={(e) =>
+                                        handleCutFieldChange(idx, 'narration', e.target.value)
+                                      }
+                                      placeholder="내레이션 (독백/지문)"
+                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={cut.dialogue || ''}
+                                      onChange={(e) =>
+                                        handleCutFieldChange(idx, 'dialogue', e.target.value)
+                                      }
+                                      placeholder="캐릭터 대사"
+                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+
+                              <button
+                                type="submit"
+                                className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition flex items-center justify-center gap-1.5"
+                              >
+                                <Upload className="w-4 h-4" />
+                                회차 업로드 및 즉시 공개하기
+                              </button>
+                            </>
+                          )}
+                        </form>
+                      )}
+
+                      {/* 서브탭 3: 작가 4 : 플랫폼 6 수익 정산 */}
+                      {creatorSubTab === 'settlement' && (
+                        <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
+                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Coins className="w-4 h-4 text-amber-400" />
+                            작품별 구독 수익 정산 현황 (작가 40% : 플랫폼 60%)
+                          </h3>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                              <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                                <Users className="w-3.5 h-3.5 text-indigo-400" />내 작품 총 구독자
+                              </span>
+                              <p className="text-lg font-extrabold text-white mt-1">
+                                {myWorksList.reduce((acc, w) => acc + w.subscribers, 0)}명
+                              </p>
+                            </div>
+                            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                              <span className="text-[11px] text-slate-400">
+                                이번 달 예상 정산액 (40%)
+                              </span>
+                              <p className="text-lg font-extrabold text-amber-300 mt-1">
+                                {(
+                                  myWorksList.reduce((acc, w) => acc + w.subscribers, 0) *
+                                  4900 *
+                                  0.4
+                                ).toLocaleString()}
+                                원
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                            * 멤버십 월 구독료(4,900원) 중 작가 창작 지원 배분율 40%가 작품별 구독 비중 및 열람 수에 따라 자동 산정됩니다.
                           </p>
                         </div>
-                        <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                          <span className="text-[11px] text-slate-400">
-                            이번 달 예상 정산액 (40%)
-                          </span>
-                          <p className="text-lg font-extrabold text-amber-300 mt-1">
-                            {(
-                              myWorksList.reduce((acc, w) => acc + w.subscribers, 0) *
-                              4900 *
-                              0.4
-                            ).toLocaleString()}
-                            원
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        * 멤버십 월 구독료(4,900원) 중 작가 창작 지원 배분율 40%가 작품별 구독 비중 및 열람 수에 따라 자동 산정됩니다.
-                      </p>
+                      )}
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            {/* (B) 관리자 전용 검수 모드 */}
+            {/* (B) 관리자 전용 검수 모드 로그인 / 로그아웃 */}
             <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -1674,7 +1888,7 @@ export default function WebtoonStudioPage() {
                     <ShieldCheck className="w-5 h-5 text-emerald-400" />
                   </div>
                   <div>
-                    <h2 className="text-base font-bold text-white">관리자 전용 검수 모드</h2>
+                    <h2 className="text-base font-bold text-white">관리자 전용 로그인 / 검수 모드</h2>
                     <p className="text-xs text-slate-400">
                       결제 없이 1~100화 전체 원고 및 입점 작가 작품을 검수합니다.
                     </p>
@@ -1682,32 +1896,33 @@ export default function WebtoonStudioPage() {
                 </div>
                 <span
                   className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                    isAdminReview
+                    isAdminReview || currentUser?.role === 'admin'
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                       : 'bg-slate-800 text-slate-400'
                   }`}
                 >
-                  {isAdminReview ? '활성화됨' : '비활성'}
+                  {isAdminReview || currentUser?.role === 'admin' ? '로그인됨' : '비활성'}
                 </span>
               </div>
 
-              {isAdminReview ? (
+              {isAdminReview || currentUser?.role === 'admin' ? (
                 <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-3">
                   <p className="text-xs sm:text-sm text-emerald-200">
-                    현재 <strong>관리자 검수중</strong> 상태입니다. 헤더 배지가 표시되며 전 작품 모든 잠금이 해제되었습니다.
+                    현재 <strong>관리자 계정</strong>으로 로그인되어 있습니다. 전 작품 모든 회차 잠금이 해제되었습니다.
                   </p>
                   <button
                     type="button"
-                    onClick={handleAdminDisable}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                    onClick={handleLogoutAll}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
                   >
-                    검수 모드 종료하기
+                    <LogOut className="w-3.5 h-3.5" />
+                    관리자 로그아웃
                   </button>
                 </div>
               ) : (
                 <form onSubmit={handleAdminUnlock} className="space-y-3 pt-1">
                   <label className="block text-xs font-medium text-slate-300">
-                    관리자 검수 PIN 입력 (기본 PIN: 2026)
+                    관리자 PIN 입력 (기본 PIN: 2026)
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -1724,7 +1939,7 @@ export default function WebtoonStudioPage() {
                       className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition flex items-center gap-1.5"
                     >
                       <Unlock className="w-4 h-4" />
-                      잠금 해제
+                      관리자 로그인
                     </button>
                   </div>
                   {adminError && (
@@ -1872,7 +2087,7 @@ export default function WebtoonStudioPage() {
             }`}
           >
             <BookOpen className="w-5 h-5" />
-            <span>작품 소개</span>
+            <span>홈 · 작품관</span>
           </button>
 
           <button
