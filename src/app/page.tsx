@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import EpisodeUploadForm, { CutItem } from '@/components/EpisodeUploadForm';
-import { Lock, Unlock, ShieldCheck, BookOpen, PenTool, User } from 'lucide-react';
+import { Lock, Unlock, ShieldCheck, BookOpen, PenTool, User, Home, ArrowLeft, LogOut } from 'lucide-react';
 
 const DEFAULT_CUTS: CutItem[] = [
   {
@@ -48,7 +48,7 @@ const DEFAULT_CUTS: CutItem[] = [
 ];
 
 export default function WebtoonStudioApp() {
-  const [activeTab, setActiveTab] = useState<'viewer' | 'studio'>('studio');
+  const [activeTab, setActiveTab] = useState<'viewer' | 'studio'>('viewer');
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [pinInput, setPinInput] = useState<string>('');
@@ -79,32 +79,65 @@ export default function WebtoonStudioApp() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-24">
-      <header className="sticky top-0 z-30 bg-slate-950/90 backdrop-blur border-b border-slate-800 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+      {/* 상단 고정 헤더: 홈(뷰어) / 작가 스튜디오 즉시 전환 버튼 배치 */}
+      <header className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur border-b border-slate-800 px-4 py-3">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
+          {/* 로고 클릭 시 언제든 독자용 웹툰 뷰어 홈으로 복귀 */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('viewer')}
+            className="flex items-center gap-2.5 text-left hover:opacity-90 transition"
+          >
             <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-black text-white">
               W
             </div>
             <div>
               <h1 className="text-sm font-bold leading-tight">웹툰스튜디오스</h1>
-              <p className="text-[11px] text-slate-400">오픈 웹툰 창작 & 구독 플랫폼</p>
+              <p className="text-[11px] text-slate-400">
+                {activeTab === 'studio' ? '작가 스튜디오 모드' : '독자 감상 모드'}
+              </p>
             </div>
-          </div>
-
-          <button
-            onClick={() => (isAdmin ? setIsAdmin(false) : setShowPinModal(true))}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 border ${
-              isAdmin
-                ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                : 'bg-slate-900 border-slate-700 text-slate-300'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            {isAdmin ? '관리자 검수중' : '관리자 모드'}
           </button>
+
+          {/* 우측 상단 직관적인 모드 전환 & 나가기 버튼 */}
+          <div className="flex items-center gap-2">
+            {activeTab === 'studio' ? (
+              <button
+                type="button"
+                onClick={() => setActiveTab('viewer')}
+                className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-yellow-400 hover:bg-yellow-300 text-slate-950 flex items-center gap-1.5 shadow transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>스튜디오 나가기 (웹툰 보기)</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveTab('studio')}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 transition"
+              >
+                <PenTool className="w-3.5 h-3.5" />
+                <span>작가 업로드</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => (isAdmin ? setIsAdmin(false) : setShowPinModal(true))}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1 border ${
+                isAdmin
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-300'
+              }`}
+            >
+              {isAdmin ? <LogOut className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isAdmin ? '관리자 종료' : '관리자'}</span>
+            </button>
+          </div>
         </div>
       </header>
 
+      {/* PIN 입력 모달 */}
       {showPinModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-xs space-y-4">
@@ -113,7 +146,7 @@ export default function WebtoonStudioApp() {
               type="password"
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
-              placeholder="PIN 번호 입력"
+              placeholder="PIN 번호 입력 (2026)"
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-center text-white"
             />
             <div className="flex gap-2">
@@ -134,16 +167,30 @@ export default function WebtoonStudioApp() {
         </div>
       )}
 
+      {/* 메인 콘텐츠 */}
       <main className="max-w-4xl mx-auto p-4 space-y-6">
         {activeTab === 'studio' ? (
           <div className="space-y-4">
-            <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-4 text-xs text-indigo-200">
-              작가 스튜디오에서는 URL 주소 없이 <strong>내 컴퓨터에서 그림 파일을 직접 선택</strong>하여 바로 연재할 수 있습니다.
+            {/* 스튜디오 상단 안내 및 나가기 바 */}
+            <div className="bg-indigo-950/50 border border-indigo-500/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <p className="text-xs text-indigo-200">
+                그림 파일을 올린 뒤 <strong>[회차 업로드 및 즉시 공개하기]</strong>를 누르면 자동으로 독자 화면으로 이동합니다.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('viewer')}
+                className="shrink-0 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-slate-600 flex items-center justify-center gap-1.5"
+              >
+                <Home className="w-3.5 h-3.5 text-yellow-400" />
+                <span>저장 안 하고 나가기</span>
+              </button>
             </div>
+
             <EpisodeUploadForm onPublish={handlePublish} />
           </div>
         ) : (
           <div className="space-y-6">
+            {/* 회차 선택 바 */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="font-bold text-base">{publishedTitle}</h2>
@@ -170,6 +217,7 @@ export default function WebtoonStudioApp() {
               </div>
             </div>
 
+            {/* 웹툰 뷰어 본문 */}
             {isLocked ? (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
                 <Lock className="w-12 h-12 text-yellow-400 mx-auto" />
@@ -190,7 +238,7 @@ export default function WebtoonStudioApp() {
                       <div className="py-16 px-6 text-center bg-slate-900/50 space-y-2">
                         <p className="text-sm font-semibold text-slate-300">[원고 이미지 미등록 영역 - CUT #{cut.id}]</p>
                         <p className="text-xs text-slate-400">{cut.description}</p>
-                        <p className="text-xs text-yellow-400/80 pt-2">※ 하단 [작가 스튜디오] 탭에서 그림 파일을 업로드하면 이 자리에 즉시 표시됩니다.</p>
+                        <p className="text-xs text-yellow-400/80 pt-2">※ 우측 상단 [작가 업로드] 또는 하단 [작가 스튜디오]에서 그림을 올리면 이 자리에 표시됩니다.</p>
                       </div>
                     )}
                     {(cut.narration || cut.dialogue) && (
@@ -207,6 +255,7 @@ export default function WebtoonStudioApp() {
         )}
       </main>
 
+      {/* 하단 고정 네비게이션 바 */}
       <nav className="fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur border-t border-slate-800">
         <div className="max-w-4xl mx-auto grid grid-cols-3 h-16">
           <button
@@ -216,7 +265,7 @@ export default function WebtoonStudioApp() {
             }`}
           >
             <BookOpen className="w-5 h-5" />
-            <span>웹툰 뷰어</span>
+            <span>웹툰 보기 (홈)</span>
           </button>
           <button
             onClick={() => setActiveTab('studio')}
@@ -228,11 +277,13 @@ export default function WebtoonStudioApp() {
             <span>작가 스튜디오</span>
           </button>
           <button
-            onClick={() => setShowPinModal(true)}
-            className="flex flex-col items-center justify-center gap-1 text-xs text-slate-400"
+            onClick={() => (isAdmin ? setIsAdmin(false) : setShowPinModal(true))}
+            className={`flex flex-col items-center justify-center gap-1 text-xs ${
+              isAdmin ? 'text-emerald-400 font-bold' : 'text-slate-400'
+            }`}
           >
             <User className="w-5 h-5" />
-            <span>관리자 검수</span>
+            <span>{isAdmin ? '관리자 종료' : '관리자 검수'}</span>
           </button>
         </div>
       </nav>
