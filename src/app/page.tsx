@@ -154,14 +154,16 @@ export default function WebtoonStudioPage() {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [fullscreenCutIndex, setFullscreenCutIndex] = useState<number>(0);
 
-  // 멤버십 & 관리자 검수 모드 상태
+  // 멤버십 & 관리자 검수 모드 상태 (기본 화면에서는 비공개)
   const [isMember, setIsMember] = useState<boolean>(false);
   const [isAdminReview, setIsAdminReview] = useState<boolean>(false);
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
+  const [secretTapCount, setSecretTapCount] = useState<number>(0);
   const [adminPinInput, setAdminPinInput] = useState<string>('');
   const [adminError, setAdminError] = useState<string>('');
   const [adminSuccessMsg, setAdminSuccessMsg] = useState<string>('');
 
-  // 통합 회원(일반 독자 / 작가 / 관리자) 계정 상태
+  // 회원(일반 독자 / 작가) 계정 상태
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
@@ -239,6 +241,17 @@ export default function WebtoonStudioPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // 하단 서비스명 영역 5회 연속 터치 시 숨김 관리자 인증 패널 토글
+  const handleSecretAdminTrigger = () => {
+    const next = secretTapCount + 1;
+    if (next >= 5) {
+      setShowAdminPanel((prev) => !prev);
+      setSecretTapCount(0);
+    } else {
+      setSecretTapCount(next);
+    }
+  };
+
   // 현재 선택된 작품 & 회차
   const currentWork: WebtoonWork =
     works.find((w) => w.id === selectedWorkId) || works[0];
@@ -307,7 +320,7 @@ export default function WebtoonStudioPage() {
       setAdminPinInput('');
       showToast('관리자 로그인 완료 (전체 회차 잠금 해제)');
     } else {
-      setAdminError('PIN 번호가 일치하지 않습니다. (기본 PIN: 2026)');
+      setAdminError('PIN 번호가 일치하지 않습니다.');
       setAdminSuccessMsg('');
     }
   };
@@ -316,12 +329,13 @@ export default function WebtoonStudioPage() {
   const handleLogoutAll = () => {
     setCurrentUser(null);
     setIsAdminReview(false);
+    setShowAdminPanel(false);
     setAdminSuccessMsg('');
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     showToast('로그아웃되었습니다.');
   };
 
-  // 통합 회원가입 / 로그인 핸들러 (일반 독자 & 작가)
+  // 회원가입 / 로그인 핸들러 (일반 독자 & 작가 + 관리자 이메일 로그인 지원)
   const handleAuthSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -370,6 +384,7 @@ export default function WebtoonStudioPage() {
           : `${name}님, 일반 회원으로 가입되었습니다!`
       );
     } else {
+      // 관리자 이메일(admin@webtoon.kr / 2026) 비공개 로그인 지원
       if (email === 'admin@webtoon.kr' && password === '2026') {
         const adminAccount: UserAccount = {
           id: 'admin-master',
@@ -578,6 +593,7 @@ export default function WebtoonStudioPage() {
     : [];
 
   const isLoggedIn = Boolean(currentUser || isAdminReview);
+  const isAdminLoggedIn = Boolean(isAdminReview || currentUser?.role === 'admin');
 
   // 컷 렌더링 헬퍼 (일반 뷰어 & 전체화면 리더 공용 스타일)
   const renderCutVisual = (cut: EpisodeCut, idx: number, isReaderMode = false) => {
@@ -690,7 +706,7 @@ export default function WebtoonStudioPage() {
                 <span className="font-bold text-sm sm:text-base tracking-tight text-white group-hover:text-amber-300 transition">
                   웹툰스튜디오스
                 </span>
-                {(isAdminReview || currentUser?.role === 'admin') && (
+                {isAdminLoggedIn && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
                     <ShieldCheck className="w-3 h-3" />
                     관리자
@@ -711,14 +727,14 @@ export default function WebtoonStudioPage() {
                   type="button"
                   onClick={() => setActiveTab('settings')}
                   className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
-                    currentUser?.role === 'admin' || isAdminReview
+                    isAdminLoggedIn
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : currentUser?.role === 'creator'
                       ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                       : 'bg-slate-800 text-slate-200 border-slate-700'
                   }`}
                 >
-                  {currentUser?.role === 'admin' || isAdminReview ? (
+                  {isAdminLoggedIn ? (
                     <ShieldCheck className="w-3 h-3" />
                   ) : currentUser?.role === 'creator' ? (
                     <PenTool className="w-3 h-3" />
@@ -1032,7 +1048,7 @@ export default function WebtoonStudioPage() {
                   회차 목록 ({currentWork.episodes.length}화)
                 </h3>
                 <span className="text-xs text-slate-400">
-                  {isAdminReview || currentUser?.role === 'admin'
+                  {isAdminLoggedIn
                     ? '관리자 모드: 전 회차 열람 가능'
                     : isMember
                     ? '멤버십 회원: 전 회차 열람 가능'
@@ -1342,7 +1358,7 @@ export default function WebtoonStudioPage() {
                     onClick={() => setActiveTab('settings')}
                     className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 transition"
                   >
-                    관리자 로그인 / PIN 입력
+                    회원 로그인하기
                   </button>
                 </div>
               </div>
@@ -1472,15 +1488,15 @@ export default function WebtoonStudioPage() {
           </div>
         )}
 
-        {/* ==================== 6. 설정 탭 (일반 독자 · 작가 · 관리자 통합 계정 & 작가 스튜디오) ==================== */}
+        {/* ==================== 6. 설정 탭 (일반 독자 · 작가 회원가입/로그인 & 작가 스튜디오) ==================== */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            {/* (A) 통합 회원 / 작가 / 관리자 계정 관리 */}
+            {/* (A) 회원 / 작가 계정 관리 (관리자 관련 문구 및 폼은 일반 화면에 노출하지 않음) */}
             <div className="p-6 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-500/30 space-y-5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center shrink-0">
-                    {currentUser?.role === 'admin' || isAdminReview ? (
+                    {isAdminLoggedIn ? (
                       <ShieldCheck className="w-5 h-5 text-emerald-400" />
                     ) : currentUser?.role === 'creator' ? (
                       <PenTool className="w-5 h-5 text-indigo-300" />
@@ -1490,10 +1506,10 @@ export default function WebtoonStudioPage() {
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-white">
-                      회원 · 작가 · 관리자 통합 계정
+                      회원가입 · 로그인 (독자 · 작가)
                     </h2>
                     <p className="text-xs text-slate-300">
-                      일반 독자, 창작 작가, 관리자 모두 로그인 및 로그아웃할 수 있습니다.
+                      일반 독자 회원 또는 창작 작가 회원으로 가입하고 로그인할 수 있습니다.
                     </p>
                   </div>
                 </div>
@@ -1511,7 +1527,7 @@ export default function WebtoonStudioPage() {
               </div>
 
               {!isLoggedIn ? (
-                /* 비로그인 상태: 일반 독자 / 작가 회원가입 및 통합 로그인 폼 */
+                /* 비로그인 상태: 일반 독자 / 작가 회원가입 및 로그인 폼 */
                 <div className="p-4 sm:p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-4">
                   <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-900 border border-slate-800">
                     <button
@@ -1654,14 +1670,14 @@ export default function WebtoonStudioPage() {
                       <div className="flex items-center gap-2">
                         <span
                           className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                            currentUser?.role === 'admin' || isAdminReview
+                            isAdminLoggedIn
                               ? 'bg-emerald-500/20 text-emerald-300'
                               : currentUser?.role === 'creator'
                               ? 'bg-indigo-500/20 text-indigo-300'
                               : 'bg-amber-400/20 text-amber-300'
                           }`}
                         >
-                          {currentUser?.role === 'admin' || isAdminReview
+                          {isAdminLoggedIn
                             ? '관리자 계정'
                             : currentUser?.role === 'creator'
                             ? '창작 작가 계정'
@@ -1703,9 +1719,7 @@ export default function WebtoonStudioPage() {
                   )}
 
                   {/* 작가 또는 관리자 계정일 때 작가 스튜디오 노출 */}
-                  {(currentUser?.role === 'creator' ||
-                    currentUser?.role === 'admin' ||
-                    isAdminReview) && (
+                  {(currentUser?.role === 'creator' || isAdminLoggedIn) && (
                     <div className="space-y-4 pt-2 border-t border-slate-800">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-indigo-300">
@@ -2018,84 +2032,89 @@ export default function WebtoonStudioPage() {
               )}
             </div>
 
-            {/* (B) 관리자 전용 검수 모드 로그인 / 로그아웃 */}
-            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            {/* (B) 숨김 관리자 전용 검수 패널 (관리자 로그인 중이거나 하단 서비스명 5회 터치 시에만 표시) */}
+            {(isAdminLoggedIn || showAdminPanel) && (
+              <div className="p-6 rounded-2xl bg-slate-900 border border-emerald-500/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-white">관리자 전용 검수 모드</h2>
+                      <p className="text-xs text-slate-400">
+                        결제 없이 1~100화 전체 원고 및 입점 작가 작품을 검수합니다.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base font-bold text-white">관리자 전용 로그인 / 검수 모드</h2>
-                    <p className="text-xs text-slate-400">
-                      결제 없이 1~100화 전체 원고 및 입점 작가 작품을 검수합니다.
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                    isAdminReview || currentUser?.role === 'admin'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {isAdminReview || currentUser?.role === 'admin' ? '로그인됨' : '비활성'}
-                </span>
-              </div>
-
-              {isAdminReview || currentUser?.role === 'admin' ? (
-                <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-3">
-                  <p className="text-xs sm:text-sm text-emerald-200">
-                    현재 <strong>관리자 계정</strong>으로 로그인되어 있습니다. 전 작품 모든 회차 잠금이 해제되었습니다.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleLogoutAll}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      isAdminLoggedIn
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
                   >
-                    <LogOut className="w-3.5 h-3.5" />
-                    관리자 로그아웃
-                  </button>
+                    {isAdminLoggedIn ? '활성화됨' : '인증 대기'}
+                  </span>
                 </div>
-              ) : (
-                <form onSubmit={handleAdminUnlock} className="space-y-3 pt-1">
-                  <label className="block text-xs font-medium text-slate-300">
-                    관리자 PIN 입력 (기본 PIN: 2026)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={8}
-                      value={adminPinInput}
-                      onChange={(e) => setAdminPinInput(e.target.value)}
-                      placeholder="PIN 번호 4자리 입력"
-                      className="flex-1 rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
-                    />
+
+                {isAdminLoggedIn ? (
+                  <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-3">
+                    <p className="text-xs sm:text-sm text-emerald-200">
+                      현재 <strong>관리자 계정</strong>으로 로그인되어 있습니다. 전 작품 모든 회차 잠금이 해제되었습니다.
+                    </p>
                     <button
-                      type="submit"
-                      className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition flex items-center gap-1.5"
+                      type="button"
+                      onClick={handleLogoutAll}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
                     >
-                      <Unlock className="w-4 h-4" />
-                      관리자 로그인
+                      <LogOut className="w-3.5 h-3.5" />
+                      관리자 로그아웃
                     </button>
                   </div>
-                  {adminError && (
-                    <p className="text-xs text-rose-400 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      {adminError}
-                    </p>
-                  )}
-                  {adminSuccessMsg && (
-                    <p className="text-xs text-emerald-400">{adminSuccessMsg}</p>
-                  )}
-                </form>
-              )}
-            </div>
+                ) : (
+                  <form onSubmit={handleAdminUnlock} className="space-y-3 pt-1">
+                    <label className="block text-xs font-medium text-slate-300">
+                      관리자 인증 코드 입력
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={8}
+                        value={adminPinInput}
+                        onChange={(e) => setAdminPinInput(e.target.value)}
+                        placeholder="인증 코드 입력"
+                        className="flex-1 rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+                      />
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition flex items-center gap-1.5"
+                      >
+                        <Unlock className="w-4 h-4" />
+                        인증
+                      </button>
+                    </div>
+                    {adminError && (
+                      <p className="text-xs text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {adminError}
+                      </p>
+                    )}
+                    {adminSuccessMsg && (
+                      <p className="text-xs text-emerald-400">{adminSuccessMsg}</p>
+                    )}
+                  </form>
+                )}
+              </div>
+            )}
 
-            {/* (C) 플랫폼 정보 */}
+            {/* (C) 플랫폼 정보 (서비스명 줄을 5회 연속 클릭하면 관리자 인증 패널이 열립니다) */}
             <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs text-slate-400">
-              <div className="flex justify-between py-1 border-b border-slate-800/80">
+              <div
+                onClick={handleSecretAdminTrigger}
+                className="flex justify-between py-1 border-b border-slate-800/80 select-none cursor-default"
+              >
                 <span>서비스명</span>
                 <span className="text-slate-200 font-medium">
                   웹툰스튜디오스 (Webtoon Studios 오픈 연재 플랫폼)
