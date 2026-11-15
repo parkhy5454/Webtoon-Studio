@@ -18,6 +18,7 @@ export async function ensureSchemaAndSeed() {
     await sql`
       CREATE TABLE IF NOT EXISTS comments (
         id SERIAL PRIMARY KEY,
+        webtoon_id TEXT NOT NULL DEFAULT '1',
         episode_id INTEGER NOT NULL DEFAULT 1,
         author TEXT NOT NULL,
         content TEXT NOT NULL,
