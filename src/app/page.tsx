@@ -1,707 +1,2304 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import EpisodeUploadForm, { CutItem } from '@/components/EpisodeUploadForm';
 import {
   Home,
   BookOpen,
+  Play,
   Crown,
   MessageSquare,
   Settings,
   Lock,
   Unlock,
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  X,
   ShieldCheck,
-  PenTool,
-  ArrowLeft,
-  LogOut,
-  Play,
-  Send,
   Sparkles,
-  Check,
+  Heart,
+  Share2,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  Volume2,
+  Layers,
+  UserPlus,
+  LogIn,
+  LogOut,
+  Upload,
+  PlusCircle,
+  PenTool,
+  Coins,
+  Users,
   Trash2,
+  User,
+  ArrowRight,
+  Award,
+  Zap,
 } from 'lucide-react';
+import { EPISODES_100 } from '@/lib/episodes-100';
 
-type MainTab = 'home' | 'viewer' | 'membership' | 'community' | 'settings' | 'studio';
-
-interface EpisodeRecord {
-  episodeNum: number;
-  title: string;
-  cuts: CutItem[];
-  updatedAt: string;
+interface EpisodeCut {
+  img: string;
+  scene?: string;
+  narration?: string;
+  dialogue?: string;
+  sfx?: string;
+  [key: string]: unknown;
 }
 
-const DEFAULT_CUTS_EP1: CutItem[] = [
+interface Episode {
+  num: number;
+  title: string;
+  cuts: EpisodeCut[];
+  [key: string]: unknown;
+}
+
+type TabType = 'home' | 'works' | 'viewer' | 'membership' | 'community' | 'settings';
+type UserRole = 'reader' | 'creator' | 'admin';
+
+interface CommentItem {
+  id: string;
+  author: string;
+  episode: number;
+  content: string;
+  likes: number;
+  createdAt: string;
+  isBest?: boolean;
+}
+
+interface UserAccount {
+  id: string;
+  role: UserRole;
+  displayName: string;
+  email: string;
+  password: string;
+  joinedAt: string;
+}
+
+interface WebtoonWork {
+  id: string;
+  title: string;
+  authorName: string;
+  authorId: string;
+  genre: string;
+  synopsis: string;
+  coverImg: string;
+  subscribers: number;
+  episodes: Episode[];
+  isOfficial?: boolean;
+}
+
+const INITIAL_COMMENTS: CommentItem[] = [
   {
-    id: 1,
-    imageUrl: '',
-    description: '달빛이 비치는 서울 옥탑방 전경',
-    sfx: '휘이이잉-',
-    narration: '1994년 서울, 그 달동네 언덕 위에는 각자의 꿈을 품은 청춘들이 있었다.',
-    dialogue: '박진우(27): "오늘도 서울의 달은 유난히 밝네..."',
+    id: 'c1',
+    author: '옥탑방달빛',
+    episode: 1,
+    content: '1화 첫 컷에서 옥탑방 난간 너머로 서울 야경 펼쳐질 때 소름 돋았어요. 작화 분위기가 미쳤습니다!',
+    likes: 142,
+    createdAt: '2시간 전',
+    isBest: true,
   },
   {
-    id: 2,
-    imageUrl: '',
-    description: '편의점 앞에서 컵라면을 먹는 두 청년',
-    sfx: '후루룩-',
-    narration: '주머니는 가벼웠지만 마음만은 누구보다 뜨거웠던 시절.',
-    dialogue: '김도윤(27): "진우야, 우리도 언젠간 저 빌딩 숲 위에 설 수 있겠지?"',
+    id: 'c2',
+    author: '망원동고양이',
+    episode: 3,
+    content: '서준이랑 하은이 옥상 빨랫줄 사이로 마주 보는 연출 진짜 영화 같아요. 다음 화 결제하러 갑니다.',
+    likes: 89,
+    createdAt: '5시간 전',
+    isBest: true,
   },
   {
-    id: 3,
-    imageUrl: '',
-    description: '골목길 가로등 아래 서 있는 최서윤',
-    sfx: '또각, 또각',
-    narration: '예고 없이 찾아온 인연은 조용히 문을 두드렸다.',
-    dialogue: '최서윤(25): "실례합니다, 혹시 이 근처에 옥탑방 빈 곳 있나요?"',
-  },
-  {
-    id: 4,
-    imageUrl: '',
-    description: '서로를 바라보며 놀라는 세 사람',
-    sfx: '두근!',
-    narration: '그렇게 세 사람의 서울살이가 한 지붕 아래에서 시작되었다.',
-    dialogue: '박진우(27): "어? 아까 낮에 버스에서 본 분 아닌가요?"',
-  },
-  {
-    id: 5,
-    imageUrl: '',
-    description: '서울 야경을 내려다보는 엔딩 컷',
-    sfx: '잔잔한 바람 소리',
-    narration: '제 1화 끝 - 다음 화에 계속됩니다.',
-    dialogue: '',
+    id: 'c3',
+    author: '새벽감성러',
+    episode: 5,
+    content: '5화 엔딩 대사 보고 잠 못 자는 중... 6화부터 멤버십 바로 질렀습니다!',
+    likes: 64,
+    createdAt: '1일 전',
   },
 ];
 
-const STORAGE_KEY = 'dalbit_webtoon_episodes_v1';
+const SAFE_EPISODES_100 = EPISODES_100 as unknown as Episode[];
 
-export default function WebtoonStudioApp() {
-  const [activeTab, setActiveTab] = useState<MainTab>('home');
-  const [selectedSeries, setSelectedSeries] = useState<string>('서울의 달');
-  const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+const INITIAL_WORKS: WebtoonWork[] = [
+  {
+    id: 'work-dalbit',
+    title: '달을 비추는 옥탑',
+    authorName: '웹툰스튜디오스 오리지널',
+    authorId: 'official-studio',
+    genre: '감성 로맨스 · 드라마',
+    synopsis:
+      '서울의 가장 낮은 골목 끝, 달빛만이 유일한 조명인 오래된 옥탑방. 각자의 상처를 숨긴 채 옥상 난간을 마주한 두 청춘이 써 내려가는 100일간의 야경 로맨스 드라마.',
+    coverImg: SAFE_EPISODES_100[0]?.cuts?.[0]?.img || '',
+    subscribers: 1280,
+    episodes: SAFE_EPISODES_100,
+    isOfficial: true,
+  },
+];
+
+const STORAGE_KEYS = {
+  USERS: 'webtoon_studios_users_v2',
+  CURRENT_USER: 'webtoon_studios_current_user_v2',
+  CUSTOM_WORKS: 'webtoon_studios_custom_works_v1',
+};
+
+export default function WebtoonStudioPage() {
+  // 초기 첫 화면은 플랫폼 정체성을 보여주는 'home' 탭
+  const [activeTab, setActiveTab] = useState<TabType>('home');
+
+  // 다중 작품(공유 플랫폼) 상태
+  const [works, setWorks] = useState<WebtoonWork[]>(INITIAL_WORKS);
+  const [selectedWorkId, setSelectedWorkId] = useState<string>('work-dalbit');
+  const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [fullscreenCutIndex, setFullscreenCutIndex] = useState<number>(0);
+
+  // 멤버십 & 관리자 검수 모드 상태 (기본 화면에서는 비공개)
   const [isMember, setIsMember] = useState<boolean>(false);
-  const [pinInput, setPinInput] = useState<string>('');
-  const [showPinModal, setShowPinModal] = useState<boolean>(false);
+  const [isAdminReview, setIsAdminReview] = useState<boolean>(false);
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
+  const [secretTapCount, setSecretTapCount] = useState<number>(0);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  const [adminError, setAdminError] = useState<string>('');
+  const [adminSuccessMsg, setAdminSuccessMsg] = useState<string>('');
 
-  // 회차별 데이터 저장소 (1화 기본 세팅 + 작가 업로드 회차 영구 보관)
-  const [episodesMap, setEpisodesMap] = useState<Record<number, EpisodeRecord>>({
-    1: {
-      episodeNum: 1,
-      title: '서울의 달 - 제 1화',
-      cuts: DEFAULT_CUTS_EP1,
-      updatedAt: '기본 연재분',
-    },
-  });
+  // 회원(일반 독자 / 작가) 계정 상태
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
+  const [signupRole, setSignupRole] = useState<'reader' | 'creator'>('reader');
+  const [displayNameInput, setDisplayNameInput] = useState<string>('');
+  const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [authError, setAuthError] = useState<string>('');
 
-  // 커뮤니티 댓글 상태
-  const [comments, setComments] = useState([
-    { id: 1, author: '달빛독자', text: '1994년 서울 감성이 살아있네요! 1화부터 몰입감 최고입니다.', time: '방금 전' },
-    { id: 2, author: '웹툰매니아', text: '진우, 도윤, 서윤 세 사람 케미가 너무 기대됩니다!', time: '10분 전' },
+  // 작가 작품 등록 & 회차 업로드 폼 상태
+  const [creatorSubTab, setCreatorSubTab] = useState<'newWork' | 'newEpisode' | 'settlement'>('newWork');
+  const [newWorkTitle, setNewWorkTitle] = useState<string>('');
+  const [newWorkGenre, setNewWorkGenre] = useState<string>('드라마 · 일상');
+  const [newWorkSynopsis, setNewWorkSynopsis] = useState<string>('');
+  const [newWorkCover, setNewWorkCover] = useState<string>('');
+
+  const [targetWorkId, setTargetWorkId] = useState<string>('');
+  const [newEpTitle, setNewEpTitle] = useState<string>('');
+  const [newEpCuts, setNewEpCuts] = useState<EpisodeCut[]>([
+    { img: '', scene: '', narration: '', dialogue: '', sfx: '' },
   ]);
-  const [commentAuthor, setCommentAuthor] = useState('');
-  const [commentText, setCommentText] = useState('');
 
-  // localStorage에서 기존 업로드 데이터 불러오기
+  // 좋아요 & 댓글 & 토스트
+  const [likedEpisodes, setLikedEpisodes] = useState<string[]>(['work-dalbit-1']);
+  const [comments, setComments] = useState<CommentItem[]>(INITIAL_COMMENTS);
+  const [newComment, setNewComment] = useState<string>('');
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2800);
+  };
+
+  // 로컬 스토리지에서 회원 계정 및 등록된 공유 작품 불러오기
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          setEpisodesMap((prev) => ({ ...prev, ...parsed }));
+      const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+      if (savedUsers) {
+        setUsers(JSON.parse(savedUsers));
+      }
+      const savedCurrent = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+      if (savedCurrent) {
+        const parsedUser: UserAccount = JSON.parse(savedCurrent);
+        setCurrentUser(parsedUser);
+        if (parsedUser.role === 'admin') {
+          setIsAdminReview(true);
         }
       }
-    } catch (e) {
-      console.error('저장된 회차 불러오기 실패:', e);
+      const savedWorks = localStorage.getItem(STORAGE_KEYS.CUSTOM_WORKS);
+      if (savedWorks) {
+        const parsedCustom: WebtoonWork[] = JSON.parse(savedWorks);
+        if (Array.isArray(parsedCustom) && parsedCustom.length > 0) {
+          setWorks([...INITIAL_WORKS, ...parsedCustom]);
+        }
+      }
+    } catch {
+      // 스토리지 접근 오류 무시
     }
   }, []);
 
-  const episodesList = Array.from({ length: 100 }, (_, i) => i + 1);
-  const isLocked = selectedEpisode > 5 && !isAdmin && !isMember;
-
-  const currentEpisodeData: EpisodeRecord = episodesMap[selectedEpisode] || {
-    episodeNum: selectedEpisode,
-    title: `${selectedSeries} - 제 ${selectedEpisode}화`,
-    cuts: DEFAULT_CUTS_EP1.map((c) => ({
-      ...c,
-      narration: `제 ${selectedEpisode}화 스토리 장면 #${c.id}`,
-    })),
-    updatedAt: '연재 예정',
-  };
-
-  const handleAdminAuth = () => {
-    if (pinInput === '2026') {
-      setIsAdmin(true);
-      setShowPinModal(false);
-      setPinInput('');
-      alert('관리자 검수 모드가 활성화되었습니다. (1~100화 전체 열람 가능)');
-    } else {
-      alert('PIN 번호가 일치하지 않습니다.');
-    }
-  };
-
-  // 작가가 회차를 업로드하면 즉시 저장하고 웹툰 뷰어로 전환!
-  const handlePublish = (series: string, epNum: number, title: string, newCuts: CutItem[]) => {
-    const newRecord: EpisodeRecord = {
-      episodeNum: epNum,
-      title,
-      cuts: newCuts,
-      updatedAt: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    const updatedMap = {
-      ...episodesMap,
-      [epNum]: newRecord,
-    };
-
-    setEpisodesMap(updatedMap);
+  const persistCustomWorks = (updatedWorks: WebtoonWork[]) => {
+    setWorks(updatedWorks);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedMap));
-    } catch (e) {
-      console.warn('로컬 스토리지 용량 한계:', e);
+      const customOnly = updatedWorks.filter((w) => !w.isOfficial);
+      localStorage.setItem(STORAGE_KEYS.CUSTOM_WORKS, JSON.stringify(customOnly));
+    } catch {
+      // 무시
     }
+  };
 
-    setSelectedSeries(series);
-    setSelectedEpisode(epNum);
+  // 상단 왼쪽 로고/타이틀 클릭 시 홈 메인 화면으로 이동
+  const handleGoHome = () => {
+    setIsFullscreen(false);
+    setActiveTab('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // 하단 서비스명 영역 5회 연속 터치 시 숨김 관리자 인증 패널 토글
+  const handleSecretAdminTrigger = () => {
+    const next = secretTapCount + 1;
+    if (next >= 5) {
+      setShowAdminPanel((prev) => !prev);
+      setSecretTapCount(0);
+    } else {
+      setSecretTapCount(next);
+    }
+  };
+
+  // 현재 선택된 작품 & 회차
+  const currentWork: WebtoonWork =
+    works.find((w) => w.id === selectedWorkId) || works[0];
+
+  const currentEpisode: Episode =
+    currentWork.episodes.find((ep) => ep.num === selectedEpisodeNum) ||
+    currentWork.episodes[0] || {
+      num: 1,
+      title: '등록된 회차가 없습니다',
+      cuts: [],
+    };
+
+  // 열람 가능 여부 (1~5화 무료, 멤버십/관리자 검수 또는 본인 작품일 때 열람 가능)
+  const canAccessEpisode = (work: WebtoonWork, epNum: number) => {
+    if (epNum <= 5) return true;
+    if (isMember || isAdminReview || currentUser?.role === 'admin') return true;
+    if (currentUser && work.authorId === currentUser.id) return true;
+    return false;
+  };
+
+  const isCurrentAccessible = canAccessEpisode(currentWork, currentEpisode.num);
+
+  // 키보드 방향키로 전체화면 리더 이동
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFullscreen(false);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        setFullscreenCutIndex((prev) =>
+          Math.min(prev + 1, (currentEpisode.cuts?.length || 1) - 1)
+        );
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        setFullscreenCutIndex((prev) => Math.max(prev - 1, 0));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen, currentEpisode]);
+
+  const handleSelectWorkAndEpisode = (workId: string, epNum: number) => {
+    setSelectedWorkId(workId);
+    setSelectedEpisodeNum(epNum);
+    setFullscreenCutIndex(0);
     setActiveTab('viewer');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
+  // 관리자 검수 모드 핸들러 (PIN 2026)
+  const handleAdminUnlock = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
-    setComments((prev) => [
-      {
-        id: Date.now(),
-        author: commentAuthor.trim() || '익명독자',
-        text: commentText.trim(),
-        time: '방금 전',
-      },
-      ...prev,
-    ]);
-    setCommentText('');
-  };
-
-  const handleResetData = () => {
-    if (confirm('업로드한 로컬 저장 데이터를 초기화하시겠습니까?')) {
-      localStorage.removeItem(STORAGE_KEY);
-      setEpisodesMap({
-        1: {
-          episodeNum: 1,
-          title: '서울의 달 - 제 1화',
-          cuts: DEFAULT_CUTS_EP1,
-          updatedAt: '기본 연재분',
-        },
-      });
-      alert('초기화되었습니다.');
+    if (adminPinInput.trim() === '2026') {
+      const adminAccount: UserAccount = {
+        id: 'admin-master',
+        role: 'admin',
+        displayName: '총괄 관리자',
+        email: 'admin@webtoonstudios.kr',
+        password: '',
+        joinedAt: '2026',
+      };
+      setIsAdminReview(true);
+      setCurrentUser(adminAccount);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
+      setAdminError('');
+      setAdminSuccessMsg('관리자 모드로 로그인되었습니다. 1~100화 전체 열람이 가능합니다.');
+      setAdminPinInput('');
+      showToast('관리자 로그인 완료 (전체 회차 잠금 해제)');
+    } else {
+      setAdminError('PIN 번호가 일치하지 않습니다.');
+      setAdminSuccessMsg('');
     }
   };
 
+  // 통합 로그아웃 (일반 독자 / 작가 / 관리자 모두 로그아웃)
+  const handleLogoutAll = () => {
+    setCurrentUser(null);
+    setIsAdminReview(false);
+    setShowAdminPanel(false);
+    setAdminSuccessMsg('');
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    showToast('로그아웃되었습니다.');
+  };
+
+  // 회원가입 / 로그인 핸들러 (일반 독자 & 작가 + 관리자 이메일 로그인 지원)
+  const handleAuthSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+
+    const email = emailInput.trim().toLowerCase();
+    const password = passwordInput.trim();
+
+    if (!email || !password) {
+      setAuthError('이메일과 비밀번호를 모두 입력해주세요.');
+      return;
+    }
+
+    if (authMode === 'signup') {
+      const name = displayNameInput.trim();
+      if (!name) {
+        setAuthError(
+          signupRole === 'creator'
+            ? '활동하실 작가 필명을 입력해주세요.'
+            : '사용하실 닉네임을 입력해주세요.'
+        );
+        return;
+      }
+      if (users.some((u) => u.email === email)) {
+        setAuthError('이미 가입된 이메일입니다. 로그인 탭을 이용해주세요.');
+        return;
+      }
+      const newAccount: UserAccount = {
+        id: `${signupRole}-${Date.now()}`,
+        role: signupRole,
+        displayName: name,
+        email,
+        password,
+        joinedAt: new Date().toLocaleDateString('ko-KR'),
+      };
+      const updatedUsers = [...users, newAccount];
+      setUsers(updatedUsers);
+      setCurrentUser(newAccount);
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(newAccount));
+      setDisplayNameInput('');
+      setEmailInput('');
+      setPasswordInput('');
+      showToast(
+        signupRole === 'creator'
+          ? `${name} 작가님, 가입을 환영합니다! 바로 작품을 등록할 수 있습니다.`
+          : `${name}님, 일반 회원으로 가입되었습니다!`
+      );
+    } else {
+      // 관리자 이메일(admin@webtoon.kr / 2026) 비공개 로그인 지원
+      if (email === 'admin@webtoon.kr' && password === '2026') {
+        const adminAccount: UserAccount = {
+          id: 'admin-master',
+          role: 'admin',
+          displayName: '총괄 관리자',
+          email: 'admin@webtoon.kr',
+          password: '',
+          joinedAt: '2026',
+        };
+        setCurrentUser(adminAccount);
+        setIsAdminReview(true);
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
+        setEmailInput('');
+        setPasswordInput('');
+        showToast('관리자 계정으로 로그인되었습니다.');
+        return;
+      }
+
+      const found = users.find((u) => u.email === email && u.password === password);
+      if (!found) {
+        setAuthError('이메일 또는 비밀번호가 올바르지 않습니다.');
+        return;
+      }
+      setCurrentUser(found);
+      setIsAdminReview(found.role === 'admin');
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(found));
+      setEmailInput('');
+      setPasswordInput('');
+      showToast(
+        `${found.displayName}님(${
+          found.role === 'creator' ? '작가' : '일반 회원'
+        })으로 로그인되었습니다.`
+      );
+    }
+  };
+
+  // 일반 독자 -> 작가 전환 버튼
+  const handleUpgradeToCreator = () => {
+    if (!currentUser) return;
+    const upgraded: UserAccount = { ...currentUser, role: 'creator' };
+    const updatedUsers = users.map((u) => (u.id === currentUser.id ? upgraded : u));
+    setUsers(updatedUsers);
+    setCurrentUser(upgraded);
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(upgraded));
+    showToast(`${upgraded.displayName}님, 작가 계정으로 전환되었습니다!`);
+  };
+
+  // 새 웹툰 작품 등록 핸들러
+  const handleCreateWork = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || (currentUser.role !== 'creator' && currentUser.role !== 'admin')) {
+      return;
+    }
+    if (!newWorkTitle.trim()) {
+      showToast('작품 제목을 입력해주세요.');
+      return;
+    }
+
+    const createdWorkId = `work-${Date.now()}`;
+    const createdWork: WebtoonWork = {
+      id: createdWorkId,
+      title: newWorkTitle.trim(),
+      authorName: currentUser.displayName,
+      authorId: currentUser.id,
+      genre: newWorkGenre.trim() || '드라마',
+      synopsis:
+        newWorkSynopsis.trim() ||
+        `${currentUser.displayName} 작가의 오리지널 연재 웹툰입니다.`,
+      coverImg: newWorkCover.trim(),
+      subscribers: 1,
+      episodes: [],
+    };
+
+    const updated = [...works, createdWork];
+    persistCustomWorks(updated);
+    setTargetWorkId(createdWorkId);
+    setNewWorkTitle('');
+    setNewWorkSynopsis('');
+    setNewWorkCover('');
+    setCreatorSubTab('newEpisode');
+    showToast(`새 작품 《${createdWork.title}》이(가) 등록되었습니다! 이제 1화를 올려보세요.`);
+  };
+
+  // 컷 입력 필드 조작
+  const handleCutFieldChange = (
+    index: number,
+    field: 'img' | 'scene' | 'narration' | 'dialogue' | 'sfx',
+    value: string
+  ) => {
+    setNewEpCuts((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleAddCutSlot = () => {
+    setNewEpCuts((prev) => [
+      ...prev,
+      { img: '', scene: '', narration: '', dialogue: '', sfx: '' },
+    ]);
+  };
+
+  const handleRemoveCutSlot = (index: number) => {
+    if (newEpCuts.length <= 1) return;
+    setNewEpCuts((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // 새 회차(에피소드) 업로드 핸들러
+  const handlePublishEpisode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || (currentUser.role !== 'creator' && currentUser.role !== 'admin')) {
+      return;
+    }
+
+    const myWorks = works.filter((w) => w.authorId === currentUser.id);
+    const activeTargetId = targetWorkId || myWorks[0]?.id;
+    const targetWork = works.find((w) => w.id === activeTargetId);
+
+    if (!targetWork) {
+      showToast('먼저 새 작품을 등록해주세요.');
+      setCreatorSubTab('newWork');
+      return;
+    }
+    if (!newEpTitle.trim()) {
+      showToast('회차 제목을 입력해주세요.');
+      return;
+    }
+
+    const validCuts = newEpCuts.filter(
+      (c) =>
+        (c.img || '').trim() ||
+        (c.scene || '').trim() ||
+        (c.narration || '').trim() ||
+        (c.dialogue || '').trim()
+    );
+
+    if (validCuts.length === 0) {
+      showToast('최소 1개 이상의 컷 이미지 URL 또는 대사/장면을 입력해주세요.');
+      return;
+    }
+
+    const nextNum = targetWork.episodes.length + 1;
+    const newEpisode: Episode = {
+      num: nextNum,
+      title: newEpTitle.trim(),
+      cuts: validCuts,
+    };
+
+    const updatedWorks = works.map((w) => {
+      if (w.id !== targetWork.id) return w;
+      return {
+        ...w,
+        coverImg: w.coverImg || validCuts[0]?.img || '',
+        episodes: [...w.episodes, newEpisode],
+      };
+    });
+
+    persistCustomWorks(updatedWorks);
+    setNewEpTitle('');
+    setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
+    showToast(`《${targetWork.title}》 제 ${nextNum}화가 공개되었습니다!`);
+    handleSelectWorkAndEpisode(targetWork.id, nextNum);
+  };
+
+  const handleSubscribe = (planName: string) => {
+    setIsMember(true);
+    showToast(`${planName} 구독이 완료되었습니다! 전 작품·전 회차 무제한 감상이 가능합니다.`);
+    setActiveTab('viewer');
+  };
+
+  const toggleLike = (workId: string, epNum: number) => {
+    const key = `${workId}-${epNum}`;
+    setLikedEpisodes((prev) =>
+      prev.includes(key) ? prev.filter((n) => n !== key) : [...prev, key]
+    );
+  };
+
+  const handleAddComment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    const authorLabel = currentUser
+      ? currentUser.role === 'admin'
+        ? `${currentUser.displayName} (관리자)`
+        : currentUser.role === 'creator'
+        ? `${currentUser.displayName} (작가)`
+        : currentUser.displayName
+      : isAdminReview
+      ? '웹툰스튜디오스_관리자'
+      : '비회원_독자';
+
+    const item: CommentItem = {
+      id: `c-${Date.now()}`,
+      author: authorLabel,
+      episode: currentEpisode.num,
+      content: newComment.trim(),
+      likes: 1,
+      createdAt: '방금 전',
+    };
+    setComments([item, ...comments]);
+    setNewComment('');
+    showToast('댓글이 등록되었습니다.');
+  };
+
+  const myWorksList = currentUser
+    ? works.filter((w) => w.authorId === currentUser.id)
+    : [];
+
+  const isLoggedIn = Boolean(currentUser || isAdminReview);
+  const isAdminLoggedIn = Boolean(isAdminReview || currentUser?.role === 'admin');
+
+  // 컷 렌더링 헬퍼 (일반 뷰어 & 전체화면 리더 공용 스타일)
+  const renderCutVisual = (cut: EpisodeCut, idx: number, isReaderMode = false) => {
+    const hasValidImage = Boolean(cut.img && cut.img.trim().length > 0);
+
+    return (
+      <div
+        key={`${currentWork.id}-${currentEpisode.num}-cut-${idx}`}
+        className={`relative w-full overflow-hidden bg-slate-900 border border-slate-800/80 ${
+          isReaderMode ? 'rounded-xl shadow-2xl' : 'rounded-2xl shadow-lg'
+        }`}
+      >
+        {/* 컷 상단 번호 & 효과음(SFX) 오버레이 */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/90 border-b border-slate-800/80">
+          <span className="text-xs font-semibold tracking-wider text-amber-400/90 uppercase">
+            CUT {String(idx + 1).padStart(2, '0')} /{' '}
+            {String(currentEpisode.cuts?.length || 1).padStart(2, '0')}
+          </span>
+          {cut.sfx && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <Volume2 className="w-3 h-3 text-indigo-400" />
+              {cut.sfx}
+            </span>
+          )}
+        </div>
+
+        {/* 실제 컷 이미지 영역 */}
+        <div className="relative w-full bg-slate-950 flex items-center justify-center">
+          {hasValidImage ? (
+            <img
+              src={cut.img}
+              alt={`${currentEpisode.num}화 ${idx + 1}컷 - ${cut.scene || ''}`}
+              className={`w-full object-contain select-none ${
+                isReaderMode ? 'max-h-[68vh]' : 'max-h-[640px]'
+              }`}
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full py-16 px-6 flex flex-col items-center justify-center text-center bg-gradient-to-b from-slate-900 to-slate-950">
+              <Layers className="w-9 h-9 text-slate-600 mb-2.5" />
+              <p className="text-xs sm:text-sm text-slate-400">
+                텍스트 연출 컷 ({idx + 1}컷)
+              </p>
+            </div>
+          )}
+
+          {/* 전체화면 확대 버튼 (일반 뷰어일 때만 우측 상단 노출) */}
+          {!isReaderMode && (
+            <button
+              type="button"
+              onClick={() => {
+                setFullscreenCutIndex(idx);
+                setIsFullscreen(true);
+              }}
+              className="absolute top-3 right-3 p-2 rounded-lg bg-slate-950/75 hover:bg-slate-900 text-slate-200 border border-slate-700/70 backdrop-blur-sm transition"
+              title="이 컷부터 전체화면 리더로 보기"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* 장면 설명(scene), 내레이션(narration), 대사(dialogue) 패널 */}
+        <div className="p-4 sm:p-5 space-y-3 bg-gradient-to-b from-slate-900/95 to-slate-950">
+          {cut.scene && (
+            <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-400 leading-relaxed">
+              <span className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium text-[11px]">
+                장면
+              </span>
+              <p>{cut.scene}</p>
+            </div>
+          )}
+
+          {cut.narration && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border-l-4 border-amber-400 text-amber-100/95 text-sm sm:text-base italic leading-relaxed">
+              {cut.narration}
+            </div>
+          )}
+
+          {cut.dialogue && (
+            <div className="p-3.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-white text-sm sm:text-base font-medium leading-relaxed shadow-inner">
+              <span className="block text-[11px] font-semibold text-indigo-300 mb-1">
+                대사
+              </span>
+              “{cut.dialogue}”
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24">
+    <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
       {/* 상단 고정 헤더 */}
-      <header className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur border-b border-slate-800 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
+      <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
+        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
+          {/* 상단 왼쪽 웹툰스튜디오스 로고/타이틀 -> 클릭 시 홈 메인 화면 이동 */}
           <button
             type="button"
-            onClick={() => setActiveTab('home')}
-            className="flex items-center gap-2.5 text-left hover:opacity-90 transition"
+            onClick={handleGoHome}
+            className="flex items-center gap-2.5 min-w-0 text-left group focus:outline-none"
+            title="웹툰스튜디오스 홈 메인 화면으로 이동"
           >
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-black text-white">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-indigo-600 flex items-center justify-center text-slate-950 font-black text-sm shadow shrink-0 group-hover:scale-105 transition">
               W
             </div>
-            <div>
-              <h1 className="text-sm font-bold leading-tight">웹툰스튜디오스</h1>
-              <p className="text-[11px] text-slate-400">
-                {activeTab === 'studio' ? '작가 스튜디오 (업로드)' : '오픈 웹툰 창작 & 구독 플랫폼'}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm sm:text-base tracking-tight text-white group-hover:text-amber-300 transition">
+                  웹툰스튜디오스
+                </span>
+                {isAdminLoggedIn && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                    <ShieldCheck className="w-3 h-3" />
+                    관리자
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 truncate">
+                오픈 웹툰 창작 &amp; 구독 플랫폼
               </p>
             </div>
           </button>
 
-          <div className="flex items-center gap-2">
-            {activeTab === 'studio' ? (
-              <button
-                type="button"
-                onClick={() => setActiveTab('viewer')}
-                className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-yellow-400 hover:bg-yellow-300 text-slate-950 flex items-center gap-1.5 shadow transition"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>나가기 (웹툰 보기)</span>
-              </button>
+          {/* 상단 우측: 회원/작가/관리자 배지 및 원클릭 로그아웃 */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isLoggedIn ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('settings')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
+                    isAdminLoggedIn
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : currentUser?.role === 'creator'
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                      : 'bg-slate-800 text-slate-200 border-slate-700'
+                  }`}
+                >
+                  {isAdminLoggedIn ? (
+                    <ShieldCheck className="w-3 h-3" />
+                  ) : currentUser?.role === 'creator' ? (
+                    <PenTool className="w-3 h-3" />
+                  ) : (
+                    <User className="w-3 h-3 text-amber-400" />
+                  )}
+                  <span className="max-w-[84px] truncate">
+                    {currentUser ? currentUser.displayName : '관리자'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLogoutAll}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition"
+                  title="로그아웃"
+                >
+                  <LogOut className="w-3 h-3" />
+                  <span>로그아웃</span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"
-                onClick={() => setActiveTab('studio')}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 transition"
+                onClick={() => setActiveTab('settings')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
               >
-                <PenTool className="w-3.5 h-3.5" />
-                <span>작가 업로드</span>
+                <LogIn className="w-3 h-3 text-amber-400" />
+                로그인 / 가입
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={() => (isAdmin ? setIsAdmin(false) : setShowPinModal(true))}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1 border ${
-                isAdmin
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                  : 'bg-slate-900 border-slate-700 text-slate-300'
-              }`}
-            >
-              {isAdmin ? <LogOut className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{isAdmin ? '검수중' : '관리자'}</span>
-            </button>
+            {isMember && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <Crown className="w-3.5 h-3.5" />
+              </span>
+            )}
           </div>
         </div>
       </header>
 
-      {/* 관리자 PIN 입력 모달 */}
-      {showPinModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-xs space-y-4">
-            <h3 className="text-base font-bold text-center">관리자 검수 PIN 입력</h3>
-            <p className="text-xs text-slate-400 text-center">PIN 번호(2026)를 입력하면 1~100화 전체 열람이 가능합니다.</p>
-            <input
-              type="password"
-              value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
-              placeholder="PIN 입력"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-center text-white"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowPinModal(false)}
-                className="flex-1 py-2 bg-slate-800 rounded-xl text-xs"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleAdminAuth}
-                className="flex-1 py-2 bg-yellow-400 text-slate-950 font-bold rounded-xl text-xs"
-              >
-                확인
-              </button>
-            </div>
-          </div>
+      {/* 토스트 알림 */}
+      {toastMsg && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-slate-800 text-white text-xs sm:text-sm font-medium border border-slate-700 shadow-xl flex items-center gap-2 max-w-[92vw]">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="truncate">{toastMsg}</span>
         </div>
       )}
 
-      {/* 메인 화면 영역 */}
-      <main className="max-w-4xl mx-auto p-4 space-y-6">
-        {/* 1. 홈 탭 */}
-        {
+      {/* 메인 콘텐츠 영역 */}
+      <main className="max-w-3xl mx-auto px-4 pt-5">
+        {/* ==================== 1. 홈 탭 (이 앱이 어떤 서비스인지 소개하는 메인 랜딩) ==================== */}
         {activeTab === 'home' && (
           <div className="space-y-6">
-            {/* 메인 히어로 배너 */}
-            <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-8 space-y-6 relative overflow-hidden shadow-2xl">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-yellow-400/15 text-yellow-400 text-xs font-bold border border-yellow-400/30">
-                <Sparkles className="w-3.5 h-3.5" /> 누구나 작가가 되는 오픈 웹툰 플랫폼
-              </span>
-              <div className="space-y-2">
-                <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">
-                  이야기를 그린 순간,<br />웹툰스튜디오스에서 연재가 시작됩니다
-                </h2>
-                <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl">
-                  웹툰스튜디오스는 독자와 창작자가 직접 만나는 차세대 웹툰 공유·구독 플랫폼입니다. 독자는 1~5화 무료 감상 후 멤버십으로 전 작품을 정주행하고, 작가는 복잡한 심사 없이 가입 즉시 내 웹툰을 등록해 투명한 수익 배분을 받을 수 있습니다.
-                </p>
+            {/* 히어로 브랜드 소개 배너 */}
+            <div className="relative rounded-3xl overflow-hidden border border-indigo-500/30 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-9 shadow-2xl">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-bold border border-amber-400/30 mb-4">
+                <Sparkles className="w-3.5 h-3.5" />
+                누구나 작가가 되는 오픈 웹툰 플랫폼
               </div>
-              <div className="flex flex-wrap gap-3 pt-2">
+
+              <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-snug mb-3">
+                이야기를 그린 순간,
+                <br />
+                <span className="text-amber-400">웹툰스튜디오스</span>에서 연재가 시작됩니다
+              </h1>
+
+              <p className="text-sm sm:text-base text-slate-300 leading-relaxed mb-6 max-w-2xl">
+                웹툰스튜디오스는 독자와 창작자가 직접 만나는 차세대 웹툰 공유·구독 플랫폼입니다.
+                독자는 1~5화 무료 감상 후 멤버십으로 전 작품을 정주행하고, 작가는 복잡한 심사 없이
+                가입 즉시 내 웹툰을 등록해 투명한 수익 배분을 받을 수 있습니다.
+              </p>
+
+              {/* 핵심 CTA 버튼 2종 */}
+              <div className="grid sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('viewer')}
-                  className="px-6 py-3.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-sm rounded-2xl flex items-center gap-2 transition shadow-lg shadow-yellow-400/20"
+                  onClick={() => setActiveTab('works')}
+                  className="py-3.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm sm:text-base transition flex items-center justify-center gap-2 shadow-lg"
                 >
-                  <BookOpen className="w-4 h-4" /> 연재 작품관 둘러보기 &rarr;
+                  <BookOpen className="w-4 h-4" />
+                  연재 작품관 둘러보기
+                  <ArrowRight className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('studio')}
-                  className="px-6 py-3.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm rounded-2xl border border-slate-700 flex items-center gap-2 transition"
+                  onClick={() => setActiveTab('settings')}
+                  className="py-3.5 px-5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-sm sm:text-base border border-indigo-400/40 transition flex items-center justify-center gap-2"
                 >
-                  <PenTool className="w-4 h-4 text-indigo-400" /> 작가 등록하고 내 작품 연재하기
+                  <PenTool className="w-4 h-4" />
+                  작가 등록하고 내 작품 연재하기
                 </button>
               </div>
             </div>
 
-            {/* 3가지 핵심 기능 카드 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-yellow-400/15 flex items-center justify-center text-yellow-400 font-bold">
-                  ⚡
+            {/* 3대 핵심 가치 카드 */}
+            <div className="grid sm:grid-cols-3 gap-3.5">
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Zap className="w-5 h-5" />
                 </div>
-                <h3 className="font-bold text-base text-white">1~5화 누구나 무료</h3>
+                <h2 className="text-sm sm:text-base font-bold text-white">1~5화 누구나 무료</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  모든 연재작의 초반 1~5화를 무료로 감상하고, 마음에 드는 작품은 멤버십 구독으로 전체 회차를 정주행하세요.
+                  모든 연재작의 초반 1~5화를 무료로 감상하고, 마음에 드는 작품은 멤버십으로 완결까지 정주행하세요.
                 </p>
               </div>
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-400 font-bold">
-                  ✍️
+
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <PenTool className="w-5 h-5" />
                 </div>
-                <h3 className="font-bold text-base text-white">즉시 오픈 연재 스튜디오</h3>
+                <h2 className="text-sm sm:text-base font-bold text-white">즉시 오픈 연재 스튜디오</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  회원가입 후 작가 스튜디오에서 작품 타이틀을 개설부터 컷 이미지·대사·내레이션까지 손쉽게 업로드하고 연재하세요.
+                  회원가입 후 작가 스튜디오에서 작품 타이틀 개설부터 컷 이미지·대사·효과음 업로드까지 한 번에 완료합니다.
                 </p>
               </div>
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-bold">
-                  💰
+
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <div className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center text-amber-400">
+                  <Award className="w-5 h-5" />
                 </div>
-                <h3 className="font-bold text-base text-white">투명한 작가 4:6 정산</h3>
+                <h2 className="text-sm sm:text-base font-bold text-white">투명한 작가 4 : 6 정산</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  멤버십 구독 수익의 40%를 연재 작가에게 직접 배분하며, 작가 스튜디오에서 실시간 조회수와 수익을 확인할 수 있습니다.
+                  멤버십 구독 수익의 40%를 연재 작가에게 직접 배분하며, 작가 스튜디오에서 실시간 정산 현황을 제공합니다.
                 </p>
               </div>
             </div>
 
-            {/* 전체 회차 리스트 (1~100화) */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+            {/* 대표 오리지널 작품 하이라이트 바로가기 */}
+            <div className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-base text-white">전체 회차 목록 (총 100화)</h3>
-                <span className="text-xs text-slate-400">
-                  {isAdmin ? '관리자 모드: 전 회차 열람 가능' : '1~5화 무료 / 6~100화 멤버십'}
+                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                  FEATURED ORIGINAL · 대표 완결작
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('works')}
+                  className="text-xs font-semibold text-slate-300 hover:text-amber-300 flex items-center gap-1"
+                >
+                  전체 {works.length}편 보기 →
+                </button>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-                {episodesList.map((ep) => {
-                  const locked = ep > 5 && !isAdmin && !isMember;
-                  const hasUploadedImages = episodesMap[ep]?.cuts?.some((c) => Boolean(c.imageUrl));
-                  return (
-                    <button
-                      key={ep}
-                      onClick={() => {
-                        setSelectedEpisode(ep);
-                        setActiveTab('viewer');
-                      }}
-                      className="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 flex items-center justify-between text-xs transition"
-                    >
-                      <span className="font-semibold flex items-center gap-1.5 text-slate-200">
-                        제 {ep}화
-                        {hasUploadedImages && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400" title="원고 업로드됨" />
-                        )}
-                      </span>
-                      {locked ? (
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      ) : (
-                        <span className="text-[11px] text-emerald-400 font-medium">무료</span>
-                      )}
-                    </button>
-                  );
-                })}
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="w-20 h-24 rounded-xl bg-slate-800 overflow-hidden shrink-0 border border-slate-700 flex items-center justify-center">
+                  {INITIAL_WORKS[0].coverImg ? (
+                    <img
+                      src={INITIAL_WORKS[0].coverImg}
+                      alt={INITIAL_WORKS[0].title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <BookOpen className="w-7 h-7 text-slate-500" />
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 text-[11px] font-bold">
+                      100화 완결
+                    </span>
+                    <span className="text-xs text-slate-400">{INITIAL_WORKS[0].genre}</span>
+                  </div>
+                  <h3 className="text-lg font-extrabold text-white">
+                    {INITIAL_WORKS[0].title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-400 line-clamp-2 leading-relaxed">
+                    {INITIAL_WORKS[0].synopsis}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectWorkAndEpisode('work-dalbit', 1)}
+                  className="w-full sm:w-auto shrink-0 px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5"
+                >
+                  <Play className="w-3.5 h-3.5 fill-slate-950" />
+                  1화 바로보기
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 2. 웹툰 뷰어 탭 */}
-{activeTab === 'viewer' && (
+        {/* ==================== 2. 작품관 탭 (전체 연재작 선택 & 작품 상세 & 회차 목록) ==================== */}
+        {activeTab === 'works' && (
           <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+            {/* 플랫폼 내 등록된 전체 작품 선택 카드 */}
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-bold text-base">{currentEpisodeData.title}</h2>
-                  <p className="text-xs text-slate-400">
-                    총 {currentEpisodeData.cuts.length}컷 · {currentEpisodeData.updatedAt}
-                  </p>
-                </div>
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-amber-400" />
+                  연재 작품관 ({works.length}편)
+                </h2>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('studio')}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium rounded-lg border border-slate-700 text-yellow-400"
+                  onClick={() => setActiveTab('settings')}
+                  className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1"
                 >
-                  + 이 회차 원고 수정/업로드
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  새 작품 등록
                 </button>
               </div>
 
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                {episodesList.slice(0, 30).map((ep) => {
-                  const locked = ep > 5 && !isAdmin && !isMember;
+              <div className="grid sm:grid-cols-2 gap-3">
+                {works.map((work) => {
+                  const isSelected = work.id === currentWork.id;
                   return (
                     <button
-                      key={ep}
-                      onClick={() => setSelectedEpisode(ep)}
-                      className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 border ${
-                        selectedEpisode === ep
-                          ? 'bg-yellow-400 text-slate-950 border-yellow-400 font-bold'
-                          : 'bg-slate-950 border-slate-800 text-slate-300'
+                      key={work.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedWorkId(work.id);
+                        setSelectedEpisodeNum(1);
+                      }}
+                      className={`p-4 rounded-2xl border text-left transition flex items-start gap-3.5 ${
+                        isSelected
+                          ? 'bg-indigo-950/50 border-amber-400 shadow-lg'
+                          : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      {locked ? <Lock className="w-3 h-3 text-amber-400" /> : <Unlock className="w-3 h-3 text-emerald-400" />}
-                      {ep}화
+                      <div className="w-16 h-20 rounded-xl bg-slate-800 overflow-hidden shrink-0 border border-slate-700 flex items-center justify-center">
+                        {work.coverImg ? (
+                          <img
+                            src={work.coverImg}
+                            alt={work.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <BookOpen className="w-6 h-6 text-slate-500" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {work.isOfficial ? (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 text-[10px] font-bold">
+                              대표작
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold">
+                              작가 연재작
+                            </span>
+                          )}
+                          <span className="text-[11px] text-slate-400">{work.genre}</span>
+                        </div>
+                        <h3 className="text-sm sm:text-base font-bold text-white truncate mt-1">
+                          {work.title}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          글/그림 · {work.authorName}
+                        </p>
+                        <p className="text-[11px] text-amber-400/90 mt-1.5 font-medium">
+                          총 {work.episodes.length}화 연재중
+                        </p>
+                      </div>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {isLocked ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
-                <Lock className="w-12 h-12 text-yellow-400 mx-auto" />
-                <h3 className="text-lg font-bold">제 {selectedEpisode}화는 유료 멤버십 전용 회차입니다</h3>
-                <p className="text-sm text-slate-400">
-                  1~5화는 무료로 감상하실 수 있으며, 하단 [멤버십] 가입 또는 우측 상단 [관리자] PIN(2026) 입력 시 즉시 열람됩니다.
-                </p>
-                <div className="flex justify-center gap-3 pt-2">
-                  <button
-                    onClick={() => setActiveTab('membership')}
-                    className="px-5 py-2.5 bg-yellow-400 text-slate-950 font-bold text-xs rounded-xl"
-                  >
-                    멤버십 안내 보기
-                  </button>
-                  <button
-                    onClick={() => setShowPinModal(true)}
-                    className="px-5 py-2.5 bg-slate-800 text-white font-semibold text-xs rounded-xl border border-slate-700"
-                  >
-                    관리자 PIN 입력
-                  </button>
+            {/* 선택된 작품 상세 카드 */}
+            <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-7">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-semibold border border-amber-400/30 mb-3">
+                <Sparkles className="w-3.5 h-3.5" />
+                {currentWork.authorName} · {currentWork.genre}
+              </div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mb-2.5">
+                {currentWork.title}
+              </h2>
+              <p className="text-sm text-slate-300 leading-relaxed mb-5">
+                {currentWork.synopsis}
+              </p>
+
+              <div className="grid grid-cols-3 gap-3 mb-5 text-center">
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[11px] text-slate-400 mb-0.5">등록 회차</div>
+                  <div className="text-sm sm:text-base font-bold text-white">
+                    총 {currentWork.episodes.length}화
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[11px] text-slate-400 mb-0.5">무료 공개</div>
+                  <div className="text-sm sm:text-base font-bold text-emerald-400">
+                    1~5화 무료
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="text-[11px] text-slate-400 mb-0.5">수익 배분</div>
+                  <div className="text-sm sm:text-base font-bold text-amber-300">작가 4 : 6</div>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-6">
-                {currentEpisodeData.cuts.map((cut) => (
-                  <div key={cut.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                    <div className="px-4 py-2 bg-slate-950 border-b border-slate-800 flex justify-between text-xs text-slate-400">
-                      <span>CUT #{cut.id} / {currentEpisodeData.cuts.length}</span>
-                      <span>{cut.sfx}</span>
-                    </div>
-                    {cut.imageUrl ? (
-                      <img src={cut.imageUrl} alt={`CUT ${cut.id}`} className="w-full h-auto object-contain bg-black" />
+
+              <button
+                type="button"
+                disabled={currentWork.episodes.length === 0}
+                onClick={() => handleSelectWorkAndEpisode(currentWork.id, 1)}
+                className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-bold text-sm transition flex items-center justify-center gap-2"
+              >
+                <Play className="w-4 h-4 fill-slate-950" />
+                {currentWork.episodes.length > 0
+                  ? '제 1화 첫 화부터 감상하기'
+                  : '아직 업로드된 회차가 없습니다'}
+              </button>
+            </div>
+
+            {/* 선택된 작품의 전체 회차 리스트 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-white">
+                  회차 목록 ({currentWork.episodes.length}화)
+                </h3>
+                <span className="text-xs text-slate-400">
+                  {isAdminLoggedIn
+                    ? '관리자 모드: 전 회차 열람 가능'
+                    : isMember
+                    ? '멤버십 회원: 전 회차 열람 가능'
+                    : '1~5화 무료 / 6화~ 멤버십'}
+                </span>
+              </div>
+
+              {currentWork.episodes.length === 0 ? (
+                <div className="p-8 rounded-2xl border border-slate-800 bg-slate-900/50 text-center space-y-3">
+                  <p className="text-sm text-slate-400">아직 등록된 회차가 없습니다.</p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                  >
+                    설정 &gt; 작가 스튜디오에서 첫 회차 올리기
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-800/80 rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+                  {currentWork.episodes.map((ep) => {
+                    const unlocked = canAccessEpisode(currentWork, ep.num);
+                    const thumb = ep.cuts?.[0]?.img;
+
+                    return (
+                      <button
+                        key={ep.num}
+                        type="button"
+                        onClick={() => handleSelectWorkAndEpisode(currentWork.id, ep.num)}
+                        className="w-full flex items-center justify-between p-3.5 hover:bg-slate-800/70 transition text-left"
+                      >
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="w-16 h-12 rounded-lg bg-slate-800 overflow-hidden shrink-0 border border-slate-700/70 flex items-center justify-center">
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt={`${ep.num}화 썸네일`}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-xs font-bold text-slate-400">{ep.num}화</span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-amber-400">
+                                제 {ep.num}화
+                              </span>
+                              {ep.num <= 5 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                                  무료
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm font-semibold text-white truncate mt-0.5">
+                              {ep.title}
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {ep.cuts?.length || 0}컷 수록
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 ml-3">
+                          {unlocked ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-300">
+                              <Eye className="w-3.5 h-3.5 text-amber-400" />
+                              보기
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-800 text-slate-400 text-xs">
+                              <Lock className="w-3 h-3" />
+                              잠금
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== 3. 웹툰 뷰어 탭 ==================== */}
+        {activeTab === 'viewer' && (
+          <div className="space-y-5">
+            {/* 상단 작품 & 에피소드 컨트롤 바 */}
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+              {/* 작품 전환 셀렉트 (공유 플랫폼 내 여러 작가 작품 전환) */}
+              {works.length > 1 && (
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+                  <span className="text-[11px] font-semibold text-slate-400 shrink-0">
+                    작품 선택
+                  </span>
+                  <select
+                    value={currentWork.id}
+                    onChange={(e) => handleSelectWorkAndEpisode(e.target.value, 1)}
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-semibold focus:outline-none focus:border-amber-400"
+                  >
+                    {works.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        《{w.title}》 - {w.authorName} ({w.episodes.length}화)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-400">
+                      제 {currentEpisode.num}화 / {currentWork.episodes.length}화
+                    </span>
+                    {currentEpisode.num <= 5 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                        무료 공개
+                      </span>
                     ) : (
-                      <div className="py-16 px-6 text-center bg-slate-900/50 space-y-2">
-                        <p className="text-sm font-semibold text-slate-300">[원고 이미지 미등록 영역 - CUT #{cut.id}]</p>
-                        <p className="text-xs text-slate-400">{cut.description}</p>
-                        <p className="text-xs text-yellow-400/80 pt-2">
-                          ※ 우측 상단 [작가 업로드]에서 그림 5장을 올린 뒤 맨 아래 [회차 업로드 및 즉시 공개하기] 버튼을 누르면 이 자리에 바로 보입니다.
-                        </p>
-                      </div>
-                    )}
-                    {(cut.narration || cut.dialogue) && (
-                      <div className="p-4 space-y-2 bg-slate-950/60">
-                        {cut.narration && <p className="text-xs text-slate-400 italic">{cut.narration}</p>}
-                        {cut.dialogue && (
-                          <p className="text-sm font-medium text-white bg-slate-900 p-3 rounded-xl border border-slate-800">
-                            {cut.dialogue}
-                          </p>
-                        )}
-                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300">
+                        멤버십 전용
+                      </span>
                     )}
                   </div>
-                ))}
+                  <h1 className="text-lg sm:text-xl font-bold text-white truncate mt-1">
+                    {currentEpisode.title}
+                  </h1>
+                </div>
+
+                {/* 전체화면 리더 실행 버튼 */}
+                {isCurrentAccessible && currentEpisode.cuts?.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFullscreenCutIndex(0);
+                      setIsFullscreen(true);
+                    }}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold transition shadow"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                    전체화면 리더
+                  </button>
+                )}
+              </div>
+
+              {/* 회차 빠른 선택 드롭다운 & 이전/다음 버튼 */}
+              {currentWork.episodes.length > 0 && (
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={currentEpisode.num <= 1}
+                    onClick={() =>
+                      handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num - 1)
+                    }
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 transition"
+                    title="이전 화"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <select
+                    value={currentEpisode.num}
+                    onChange={(e) =>
+                      handleSelectWorkAndEpisode(currentWork.id, Number(e.target.value))
+                    }
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-400"
+                  >
+                    {currentWork.episodes.map((ep) => (
+                      <option key={ep.num} value={ep.num}>
+                        제 {ep.num}화 - {ep.title}{' '}
+                        {ep.num <= 5
+                          ? '(무료)'
+                          : canAccessEpisode(currentWork, ep.num)
+                          ? '(열람가능)'
+                          : '(멤버십)'}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={currentEpisode.num >= currentWork.episodes.length}
+                    onClick={() =>
+                      handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num + 1)
+                    }
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 transition"
+                    title="다음 화"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 본문 컷 렌더링 영역 (잠금 여부에 따라 분기) */}
+            {isCurrentAccessible ? (
+              <div className="space-y-6">
+                {currentEpisode.cuts && currentEpisode.cuts.length > 0 ? (
+                  currentEpisode.cuts.map((cut, idx) => renderCutVisual(cut, idx, false))
+                ) : (
+                  <div className="p-12 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
+                    <p className="text-slate-400 text-sm">
+                      이 회차에 등록된 컷 데이터가 없습니다.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('settings')}
+                      className="px-4 py-2 rounded-xl bg-amber-400 text-slate-950 text-xs font-bold"
+                    >
+                      설정 &gt; 작가 스튜디오에서 회차 업로드하기
+                    </button>
+                  </div>
+                )}
+
+                {/* 에피소드 하단 인터랙션 및 다음 화 이동 */}
+                {currentWork.episodes.length > 0 && (
+                  <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => toggleLike(currentWork.id, currentEpisode.num)}
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${
+                          likedEpisodes.includes(`${currentWork.id}-${currentEpisode.num}`)
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <Heart
+                          className={`w-4 h-4 ${
+                            likedEpisodes.includes(`${currentWork.id}-${currentEpisode.num}`)
+                              ? 'fill-rose-400 text-rose-400'
+                              : ''
+                          }`}
+                        />
+                        좋아요{' '}
+                        {likedEpisodes.includes(`${currentWork.id}-${currentEpisode.num}`)
+                          ? '완료'
+                          : ''}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(window.location.href);
+                          showToast('작품 링크가 클립보드에 복사되었습니다.');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium border border-slate-700 transition"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        공유하기
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                      <button
+                        type="button"
+                        disabled={currentEpisode.num <= 1}
+                        onClick={() =>
+                          handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num - 1)
+                        }
+                        className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-sm font-semibold text-white transition"
+                      >
+                        ← 이전 화
+                      </button>
+                      <button
+                        type="button"
+                        disabled={currentEpisode.num >= currentWork.episodes.length}
+                        onClick={() =>
+                          handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num + 1)
+                        }
+                        className="py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-sm font-bold text-slate-950 transition"
+                      >
+                        다음 화 (
+                        {Math.min(currentEpisode.num + 1, currentWork.episodes.length)}화) →
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* 6~100화 멤버십 잠금 화면 */
+              <div className="p-8 sm:p-10 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 text-center space-y-5">
+                <div className="w-16 h-16 rounded-2xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center mx-auto">
+                  <Lock className="w-8 h-8 text-amber-400" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-xl font-bold text-white">
+                    제 {currentEpisode.num}화는 멤버십 전용 회차입니다
+                  </h2>
+                  <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
+                    1~5화는 무료로 감상하실 수 있으며, 6화 이후 회차는 멤버십 구독 후 즉시 열람하실 수 있습니다. (구독 수익은 작가 4 : 플랫폼 6으로 배분됩니다)
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('membership')}
+                    className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm transition"
+                  >
+                    멤버십으로 전체 회차 열기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 transition"
+                  >
+                    회원 로그인하기
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* 3. 멤버십 탭 */}
+        {/* ==================== 4. 멤버십 탭 ==================== */}
         {activeTab === 'membership' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-            <div className="space-y-2">
-              <span className="inline-flex items-center gap-1.5 text-yellow-400 text-xs font-bold">
-                <Crown className="w-4 h-4" /> 월간 구독 멤버십
-              </span>
-              <h2 className="text-xl font-bold">웹툰스튜디오스 올패스 멤버십</h2>
-              <p className="text-sm text-slate-400">6화부터 100화까지 모든 유료 연재분을 광고 없이 무제한 감상하세요.</p>
+          <div className="space-y-6">
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-500/20 via-slate-900 to-indigo-950 border border-amber-400/30">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-extrabold mb-3">
+                <Crown className="w-3.5 h-3.5" />
+                PREMIUM PASS · PortOne V2 안전결제
+              </div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white mb-2">
+                웹툰스튜디오스 전 작품 무제한 정주행
+              </h2>
+              <p className="text-sm text-slate-300">
+                《달을 비추는 옥탑》 100화 완결작을 포함한 플랫폼 입점 작가들의 모든 유료 회차를 무제한 감상하세요.
+              </p>
             </div>
 
-            <div className="bg-slate-950 border border-yellow-400/40 rounded-2xl p-5 space-y-4">
-              <div className="flex items-baseline justify-between">
-                <span className="text-base font-bold text-white">월 정기 구독권</span>
-                <span className="text-xl font-black text-yellow-400">₩4,900 / 월</span>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-5">
+                <div>
+                  <span className="text-xs font-semibold text-slate-400">월간 정기구독</span>
+                  <h3 className="text-lg font-bold text-white mt-1">스튜디오 월간 패스</h3>
+                  <div className="mt-3 flex items-baseline gap-1">
+                    <span className="text-2xl font-extrabold text-white">4,900원</span>
+                    <span className="text-xs text-slate-400">/ 월</span>
+                  </div>
+                  <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
+                    <li>• 전 작품 6화~완결 회차 즉시 열람</li>
+                    <li>• 고화질 전체화면 컷 리더 지원</li>
+                    <li>• 구독료 40% 연재 작가 창작 지원 배분</li>
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSubscribe('스튜디오 월간 패스')}
+                  className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition"
+                >
+                  {isMember ? '현재 이용 중' : '월간 패스 시작하기'}
+                </button>
               </div>
-              <ul className="space-y-2 text-xs text-slate-300">
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> 제 6화 ~ 100화 전편 즉시 잠금 해제</li>
-                <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> 신작 미리보기 및 고화질 원고 감상</li>
-              </ul>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMember(!isMember);
-                  alert(!isMember ? '멤버십 체험이 활성화되어 6~100화가 잠금 해제되었습니다!' : '멤버십이 해지되었습니다.');
-                }}
-                className={`w-full py-3 rounded-xl font-bold text-sm transition ${
-                  isMember
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500'
-                    : 'bg-yellow-400 hover:bg-yellow-300 text-slate-950'
-                }`}
-              >
-                {isMember ? '멤버십 이용 중 (클릭 시 해지)' : '멤버십 즉시 활성화 (테스트 체험)'}
-              </button>
+
+              <div className="p-6 rounded-2xl bg-slate-900 border-2 border-amber-400 flex flex-col justify-between space-y-5 relative">
+                <span className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-extrabold">
+                  BEST 추천
+                </span>
+                <div>
+                  <span className="text-xs font-semibold text-amber-400">평생 소장 올패스</span>
+                  <h3 className="text-lg font-bold text-white mt-1">전권 소장 올패스</h3>
+                  <div className="mt-3 flex items-baseline gap-1">
+                    <span className="text-2xl font-extrabold text-amber-300">19,900원</span>
+                    <span className="text-xs text-slate-400">/ 영구 소장</span>
+                  </div>
+                  <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
+                    <li>• 《달을 비추는 옥탑》 1~100화 평생 소장</li>
+                    <li>• 신작 입점 웹툰 우선 열람권</li>
+                    <li>• 추가 결제 없이 전편 감상</li>
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSubscribe('전권 소장 올패스')}
+                  className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition"
+                >
+                  {isMember ? '전권 소장 완료' : '전권 소장 결제하기'}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* 4. 커뮤니티 탭 */}
+        {/* ==================== 5. 커뮤니티 탭 ==================== */}
         {activeTab === 'community' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-            <div>
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-indigo-400" /> 독자 & 작가 커뮤니티
-              </h2>
-              <p className="text-xs text-slate-400 mt-1">작품 감상평과 응원 댓글을 남겨주세요.</p>
-            </div>
+          <div className="space-y-5">
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+              <h2 className="text-lg font-bold text-white mb-1">독자 감상 & 작가 소통 게시판</h2>
+              <p className="text-xs text-slate-400 mb-4">
+                현재 감상 중인 《{currentWork.title}》 제 {currentEpisode.num}화에 대한 감상을 남겨보세요.
+              </p>
 
-            <form onSubmit={handleAddComment} className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <input
-                type="text"
-                value={commentAuthor}
-                onChange={(e) => setCommentAuthor(e.target.value)}
-                placeholder="닉네임 (미입력 시 익명독자)"
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
-              />
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="응원 댓글을 입력하세요..."
-                  className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+              <form onSubmit={handleAddComment} className="space-y-3">
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder={`제 ${currentEpisode.num}화 감상평을 입력해주세요...`}
+                  className="w-full rounded-xl bg-slate-950 border border-slate-700 p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                 />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg flex items-center gap-1"
-                >
-                  <Send className="w-3.5 h-3.5" /> 등록
-                </button>
-              </div>
-            </form>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm transition"
+                  >
+                    댓글 등록
+                  </button>
+                </div>
+              </form>
+            </div>
 
             <div className="space-y-3">
               {comments.map((c) => (
-                <div key={c.id} className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-bold text-yellow-400">{c.author}</span>
-                    <span className="text-slate-500">{c.time}</span>
+                <div
+                  key={c.id}
+                  className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {c.isBest && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+                          BEST
+                        </span>
+                      )}
+                      <span className="text-xs font-bold text-slate-200">{c.author}</span>
+                      <span className="text-[11px] text-amber-400">· {c.episode}화</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500">{c.createdAt}</span>
                   </div>
-                  <p className="text-sm text-slate-200">{c.text}</p>
+                  <p className="text-sm text-slate-300 leading-relaxed">{c.content}</p>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* 5. 설정 탭 */}
+        {/* ==================== 6. 설정 탭 (일반 독자 · 작가 회원가입/로그인 & 작가 스튜디오) ==================== */}
         {activeTab === 'settings' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <Settings className="w-5 h-5 text-slate-300" /> 앱 설정 및 관리자 검수
-            </h2>
-
-            <div className="space-y-3">
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold">작가 스튜디오 (원고 업로드)</p>
-                  <p className="text-xs text-slate-400">새 회차 컷 이미지를 일괄 업로드하고 공개합니다.</p>
+          <div className="space-y-6">
+            {/* (A) 회원 / 작가 계정 관리 (관리자 관련 문구 및 폼은 일반 화면에 노출하지 않음) */}
+            <div className="p-6 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-500/30 space-y-5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center shrink-0">
+                    {isAdminLoggedIn ? (
+                      <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    ) : currentUser?.role === 'creator' ? (
+                      <PenTool className="w-5 h-5 text-indigo-300" />
+                    ) : (
+                      <User className="w-5 h-5 text-amber-400" />
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-white">
+                      회원가입 · 로그인 (독자 · 작가)
+                    </h2>
+                    <p className="text-xs text-slate-300">
+                      일반 독자 회원 또는 창작 작가 회원으로 가입하고 로그인할 수 있습니다.
+                    </p>
+                  </div>
                 </div>
-                <button
-                  onClick={() => setActiveTab('studio')}
-                  className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg"
-                >
-                  이동하기
-                </button>
+
+                {isLoggedIn && (
+                  <button
+                    type="button"
+                    onClick={handleLogoutAll}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    로그아웃
+                  </button>
+                )}
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold">관리자 검수 모드 (PIN 2026)</p>
-                  <p className="text-xs text-slate-400">1~100화 전 회차 잠금 해제 및 검수 권한</p>
-                </div>
-                <button
-                  onClick={() => (isAdmin ? setIsAdmin(false) : setShowPinModal(true))}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg ${
-                    isAdmin ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500' : 'bg-yellow-400 text-slate-950'
-                  }`}
-                >
-                  {isAdmin ? '활성화됨 (해제)' : 'PIN 입력'}
-                </button>
-              </div>
+              {!isLoggedIn ? (
+                /* 비로그인 상태: 일반 독자 / 작가 회원가입 및 로그인 폼 */
+                <div className="p-4 sm:p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-4">
+                  <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-900 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('signup');
+                        setAuthError('');
+                      }}
+                      className={`py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition ${
+                        authMode === 'signup'
+                          ? 'bg-indigo-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      회원가입
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('login');
+                        setAuthError('');
+                      }}
+                      className={`py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition ${
+                        authMode === 'login'
+                          ? 'bg-indigo-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <LogIn className="w-4 h-4" />
+                      로그인
+                    </button>
+                  </div>
 
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold text-red-400">업로드 데이터 초기화</p>
-                  <p className="text-xs text-slate-400">브라우저에 임시 저장된 회차 이미지를 초기화합니다.</p>
+                  <form onSubmit={handleAuthSubmit} className="space-y-3">
+                    {authMode === 'signup' && (
+                      <>
+                        {/* 회원 유형 선택: 일반 독자 vs 창작 작가 */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                            가입 유형 선택
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSignupRole('reader')}
+                              className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                                signupRole === 'reader'
+                                  ? 'bg-amber-400/20 border-amber-400 text-amber-300'
+                                  : 'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}
+                            >
+                              <User className="w-3.5 h-3.5" />
+                              일반 독자 회원
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSignupRole('creator')}
+                              className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                                signupRole === 'creator'
+                                  ? 'bg-indigo-500/25 border-indigo-400 text-indigo-200'
+                                  : 'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}
+                            >
+                              <PenTool className="w-3.5 h-3.5" />
+                              작가(창작자) 회원
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-1">
+                            {signupRole === 'creator' ? '작가 필명 (활동명)' : '독자 닉네임'}
+                          </label>
+                          <input
+                            type="text"
+                            value={displayNameInput}
+                            onChange={(e) => setDisplayNameInput(e.target.value)}
+                            placeholder={
+                              signupRole === 'creator'
+                                ? '예: 달빛작가, 서울스케치'
+                                : '예: 밤하늘독자'
+                            }
+                            className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">
+                        이메일
+                      </label>
+                      <input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        placeholder="user@example.com"
+                        className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">
+                        비밀번호
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        placeholder="비밀번호 입력"
+                        className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    {authError && (
+                      <p className="text-xs text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {authError}
+                      </p>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition"
+                    >
+                      {authMode === 'signup'
+                        ? signupRole === 'creator'
+                          ? '작가 계정 생성하고 연재 시작하기'
+                          : '일반 독자 회원가입 완료'
+                        : '로그인'}
+                    </button>
+                  </form>
                 </div>
-                <button
-                  onClick={handleResetData}
-                  className="px-4 py-2 bg-slate-800 hover:bg-red-950 text-red-300 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> 초기화
-                </button>
-              </div>
+              ) : (
+                /* 로그인 상태 표시 카드 */
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                            isAdminLoggedIn
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : currentUser?.role === 'creator'
+                              ? 'bg-indigo-500/20 text-indigo-300'
+                              : 'bg-amber-400/20 text-amber-300'
+                          }`}
+                        >
+                          {isAdminLoggedIn
+                            ? '관리자 계정'
+                            : currentUser?.role === 'creator'
+                            ? '창작 작가 계정'
+                            : '일반 독자 계정'}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {currentUser?.email || 'admin@webtoonstudios.kr'}
+                        </span>
+                      </div>
+                      <p className="text-base font-bold text-white mt-1">
+                        {currentUser ? currentUser.displayName : '총괄 관리자'} 님 로그인 중
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleLogoutAll}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-200 hover:border-rose-500/40 text-slate-200 text-xs font-bold border border-slate-700 transition flex items-center gap-1.5"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      현재 계정 로그아웃
+                    </button>
+                  </div>
+
+                  {/* 일반 독자 계정일 때 작가 전환 안내 */}
+                  {currentUser?.role === 'reader' && (
+                    <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <p className="text-xs text-slate-300">
+                        직접 웹툰을 연재하고 싶으신가요? 클릭 한 번으로 작가 스튜디오 권한을 활성화할 수 있습니다.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleUpgradeToCreator}
+                        className="shrink-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition"
+                      >
+                        작가 계정으로 전환
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 작가 또는 관리자 계정일 때 작가 스튜디오 노출 */}
+                  {(currentUser?.role === 'creator' || isAdminLoggedIn) && (
+                    <div className="space-y-4 pt-2 border-t border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-indigo-300">
+                          작가 스튜디오 · 작품 및 회차 관리
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-950/70 text-xs text-amber-300 font-bold">
+                          내 등록 작품 {myWorksList.length}편
+                        </span>
+                      </div>
+
+                      {/* 작가 스튜디오 내부 메뉴 탭 */}
+                      <div className="grid grid-cols-3 gap-2 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setCreatorSubTab('newWork')}
+                          className={`py-2 rounded-lg text-xs font-bold transition ${
+                            creatorSubTab === 'newWork'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          1. 새 작품 등록
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatorSubTab('newEpisode')}
+                          className={`py-2 rounded-lg text-xs font-bold transition ${
+                            creatorSubTab === 'newEpisode'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          2. 회차(컷) 업로드
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatorSubTab('settlement')}
+                          className={`py-2 rounded-lg text-xs font-bold transition ${
+                            creatorSubTab === 'settlement'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          3. 4:6 수익 정산
+                        </button>
+                      </div>
+
+                      {/* 서브탭 1: 새 작품 등록 */}
+                      {creatorSubTab === 'newWork' && (
+                        <form
+                          onSubmit={handleCreateWork}
+                          className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3"
+                        >
+                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <PlusCircle className="w-4 h-4 text-amber-400" />
+                            신규 웹툰 타이틀 개설
+                          </h3>
+                          <div>
+                            <label className="block text-xs text-slate-300 mb-1">
+                              작품 제목 *
+                            </label>
+                            <input
+                              type="text"
+                              value={newWorkTitle}
+                              onChange={(e) => setNewWorkTitle(e.target.value)}
+                              placeholder="예: 한강 야경의 편의점"
+                              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs text-slate-300 mb-1">장르</label>
+                              <input
+                                type="text"
+                                value={newWorkGenre}
+                                onChange={(e) => setNewWorkGenre(e.target.value)}
+                                placeholder="로맨스 · 판타지 · 일상"
+                                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-300 mb-1">
+                                대표 썸네일 이미지 URL (선택)
+                              </label>
+                              <input
+                                type="text"
+                                value={newWorkCover}
+                                onChange={(e) => setNewWorkCover(e.target.value)}
+                                placeholder="https://..."
+                                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-slate-300 mb-1">
+                              작품 시놉시스 (줄거리)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={newWorkSynopsis}
+                              onChange={(e) => setNewWorkSynopsis(e.target.value)}
+                              placeholder="독자들에게 보여질 작품 소개글을 입력하세요."
+                              className="w-full rounded-xl bg-slate-900 border border-slate-700 p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition"
+                          >
+                            작품 등록하고 회차 업로드로 이동
+                          </button>
+                        </form>
+                      )}
+
+                      {/* 서브탭 2: 회차(컷) 업로드 */}
+                      {creatorSubTab === 'newEpisode' && (
+                        <form
+                          onSubmit={handlePublishEpisode}
+                          className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-4"
+                        >
+                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Upload className="w-4 h-4 text-amber-400" />
+                            새 회차 원고 & 컷 업로드
+                          </h3>
+
+                          {myWorksList.length === 0 ? (
+                            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-2">
+                              <p className="text-xs text-slate-400">
+                                먼저 [1. 새 작품 등록]에서 작품 타이틀을 개설해주세요.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setCreatorSubTab('newWork')}
+                                className="px-3 py-1.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-bold"
+                              >
+                                새 작품 등록하러 가기
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="grid sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">
+                                    연재할 내 작품 선택
+                                  </label>
+                                  <select
+                                    value={targetWorkId || myWorksList[0]?.id}
+                                    onChange={(e) => setTargetWorkId(e.target.value)}
+                                    className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
+                                  >
+                                    {myWorksList.map((w) => (
+                                      <option key={w.id} value={w.id}>
+                                        {w.title} (다음: 제 {w.episodes.length + 1}화)
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">
+                                    회차 소제목 *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={newEpTitle}
+                                    onChange={(e) => setNewEpTitle(e.target.value)}
+                                    placeholder="예: 제 1화 - 비 오는 옥상에서"
+                                    className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* 컷별 입력 리스트 */}
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-amber-300">
+                                    컷 구성 ({newEpCuts.length}컷)
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={handleAddCutSlot}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700"
+                                  >
+                                    <PlusCircle className="w-3.5 h-3.5 text-amber-400" />
+                                    컷 추가
+                                  </button>
+                                </div>
+
+                                {newEpCuts.map((cut, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold text-indigo-300">
+                                        CUT #{idx + 1}
+                                      </span>
+                                      {newEpCuts.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveCutSlot(idx)}
+                                          className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                          삭제
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    <input
+                                      type="text"
+                                      value={cut.img || ''}
+                                      onChange={(e) =>
+                                        handleCutFieldChange(idx, 'img', e.target.value)
+                                      }
+                                      placeholder="컷 이미지 URL (예: /images/cut1.png 또는 https://...)"
+                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                    />
+                                    <div className="grid sm:grid-cols-2 gap-2">
+                                      <input
+                                        type="text"
+                                        value={cut.scene || ''}
+                                        onChange={(e) =>
+                                          handleCutFieldChange(idx, 'scene', e.target.value)
+                                        }
+                                        placeholder="장면 설명 (예: 노을 지는 옥탑방 난간)"
+                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={cut.sfx || ''}
+                                        onChange={(e) =>
+                                          handleCutFieldChange(idx, 'sfx', e.target.value)
+                                        }
+                                        placeholder="효과음 SFX (예: 쏴아아-, 두근)"
+                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={cut.narration || ''}
+                                      onChange={(e) =>
+                                        handleCutFieldChange(idx, 'narration', e.target.value)
+                                      }
+                                      placeholder="내레이션 (독백/지문)"
+                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={cut.dialogue || ''}
+                                      onChange={(e) =>
+                                        handleCutFieldChange(idx, 'dialogue', e.target.value)
+                                      }
+                                      placeholder="캐릭터 대사"
+                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+
+                              <button
+                                type="submit"
+                                className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition flex items-center justify-center gap-1.5"
+                              >
+                                <Upload className="w-4 h-4" />
+                                회차 업로드 및 즉시 공개하기
+                              </button>
+                            </>
+                          )}
+                        </form>
+                      )}
+
+                      {/* 서브탭 3: 작가 4 : 플랫폼 6 수익 정산 */}
+                      {creatorSubTab === 'settlement' && (
+                        <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
+                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Coins className="w-4 h-4 text-amber-400" />
+                            작품별 구독 수익 정산 현황 (작가 40% : 플랫폼 60%)
+                          </h3>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                              <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                                <Users className="w-3.5 h-3.5 text-indigo-400" />내 작품 총 구독자
+                              </span>
+                              <p className="text-lg font-extrabold text-white mt-1">
+                                {myWorksList.reduce((acc, w) => acc + w.subscribers, 0)}명
+                              </p>
+                            </div>
+                            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                              <span className="text-[11px] text-slate-400">
+                                이번 달 예상 정산액 (40%)
+                              </span>
+                              <p className="text-lg font-extrabold text-amber-300 mt-1">
+                                {(
+                                  myWorksList.reduce((acc, w) => acc + w.subscribers, 0) *
+                                  4900 *
+                                  0.4
+                                ).toLocaleString()}
+                                원
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                            * 멤버십 월 구독료(4,900원) 중 작가 창작 지원 배분율 40%가 작품별 구독 비중 및 열람 수에 따라 자동 산정됩니다.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* 6. 작가 스튜디오 탭 */}
-        {activeTab === 'studio' && (
-          <div className="space-y-4">
-            <div className="bg-indigo-950/50 border border-indigo-500/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <p className="text-xs text-indigo-200">
-                ① 그림 파일을 드래그해서 올린 뒤 → ② 맨 아래 노란색 <strong>[회차 업로드 및 즉시 공개하기]</strong> 버튼을 꼭 눌러야 웹툰 뷰어에 반영됩니다!
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveTab('viewer')}
-                className="shrink-0 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-slate-600 flex items-center justify-center gap-1.5"
+            {/* (B) 숨김 관리자 전용 검수 패널 (관리자 로그인 중이거나 하단 서비스명 5회 터치 시에만 표시) */}
+            {(isAdminLoggedIn || showAdminPanel) && (
+              <div className="p-6 rounded-2xl bg-slate-900 border border-emerald-500/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-white">관리자 전용 검수 모드</h2>
+                      <p className="text-xs text-slate-400">
+                        결제 없이 1~100화 전체 원고 및 입점 작가 작품을 검수합니다.
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      isAdminLoggedIn
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {isAdminLoggedIn ? '활성화됨' : '인증 대기'}
+                  </span>
+                </div>
+
+                {isAdminLoggedIn ? (
+                  <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-3">
+                    <p className="text-xs sm:text-sm text-emerald-200">
+                      현재 <strong>관리자 계정</strong>으로 로그인되어 있습니다. 전 작품 모든 회차 잠금이 해제되었습니다.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleLogoutAll}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      관리자 로그아웃
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAdminUnlock} className="space-y-3 pt-1">
+                    <label className="block text-xs font-medium text-slate-300">
+                      관리자 인증 코드 입력
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={8}
+                        value={adminPinInput}
+                        onChange={(e) => setAdminPinInput(e.target.value)}
+                        placeholder="인증 코드 입력"
+                        className="flex-1 rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+                      />
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition flex items-center gap-1.5"
+                      >
+                        <Unlock className="w-4 h-4" />
+                        인증
+                      </button>
+                    </div>
+                    {adminError && (
+                      <p className="text-xs text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {adminError}
+                      </p>
+                    )}
+                    {adminSuccessMsg && (
+                      <p className="text-xs text-emerald-400">{adminSuccessMsg}</p>
+                    )}
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* (C) 플랫폼 정보 (서비스명 줄을 5회 연속 클릭하면 관리자 인증 패널이 열립니다) */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs text-slate-400">
+              <div
+                onClick={handleSecretAdminTrigger}
+                className="flex justify-between py-1 border-b border-slate-800/80 select-none cursor-default"
               >
-                <ArrowLeft className="w-3.5 h-3.5 text-yellow-400" />
-                <span>나가기</span>
-              </button>
+                <span>서비스명</span>
+                <span className="text-slate-200 font-medium">
+                  웹툰스튜디오스 (Webtoon Studios 오픈 연재 플랫폼)
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-800/80">
+                <span>등록 작품 수</span>
+                <span className="text-slate-200 font-medium">총 {works.length}편 연재 중</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span>시스템 스택</span>
+                <span className="text-slate-200 font-medium">
+                  Next.js · Neon DB · PortOne V2
+                </span>
+              </div>
             </div>
-
-            <EpisodeUploadForm onPublish={handlePublish} />
           </div>
         )}
       </main>
 
-      {/* 하단 고정 5개 탭 네비게이션 바 (홈 / 웹툰 뷰어 / 멤버십 / 커뮤니티 / 설정) */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur border-t border-slate-800">
-        <div className="max-w-4xl mx-auto grid grid-cols-5 h-16">
+      {/* ==================== 전체화면 리더 모달 ==================== */}
+      {isFullscreen && isCurrentAccessible && currentEpisode.cuts && (
+        <div className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-lg flex flex-col">
+          {/* 전체화면 상단 바 */}
+          <div className="flex items-center justify-between px-4 h-14 border-b border-slate-800 bg-slate-950">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 text-xs font-bold">
+                제 {currentEpisode.num}화
+              </span>
+              <span className="text-sm font-bold text-white truncate">
+                {currentEpisode.title}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(false)}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+              aria-label="전체화면 닫기"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* 전체화면 중앙 컷 뷰 영역 */}
+          <div className="flex-1 overflow-y-auto px-4 py-5 flex items-center justify-center">
+            <div className="w-full max-w-2xl">
+              {renderCutVisual(
+                currentEpisode.cuts[fullscreenCutIndex] || currentEpisode.cuts[0],
+                fullscreenCutIndex,
+                true
+              )}
+            </div>
+          </div>
+
+          {/* 전체화면 하단 컷 네비게이션 */}
+          <div className="border-t border-slate-800 bg-slate-950 px-4 py-3">
+            <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={fullscreenCutIndex <= 0}
+                onClick={() => setFullscreenCutIndex((prev) => Math.max(prev - 1, 0))}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-35 text-xs sm:text-sm font-semibold text-white flex items-center gap-1 transition"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                이전 컷
+              </button>
+
+              {/* 컷 인디케이터 점 */}
+              <div className="flex items-center gap-1.5">
+                {currentEpisode.cuts.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setFullscreenCutIndex(i)}
+                    className={`h-2 rounded-full transition-all ${
+                      i === fullscreenCutIndex
+                        ? 'w-6 bg-amber-400'
+                        : 'w-2 bg-slate-700 hover:bg-slate-500'
+                    }`}
+                    aria-label={`${i + 1}컷으로 이동`}
+                  />
+                ))}
+              </div>
+
+              {fullscreenCutIndex < currentEpisode.cuts.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFullscreenCutIndex((prev) =>
+                      Math.min(prev + 1, currentEpisode.cuts.length - 1)
+                    )
+                  }
+                  className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-xs sm:text-sm font-bold text-slate-950 flex items-center gap-1 transition"
+                >
+                  다음 컷
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFullscreen(false);
+                    if (currentEpisode.num < currentWork.episodes.length) {
+                      handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num + 1);
+                    }
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-xs sm:text-sm font-bold text-slate-950 transition"
+                >
+                  {currentEpisode.num < currentWork.episodes.length
+                    ? '다음 화로 →'
+                    : '완결 감상 완료'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 하단 고정 탭바 (6개 균등 배치: 홈 · 작품관 · 뷰어 · 멤버십 · 커뮤니티 · 설정) ==================== */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800">
+        <div className="max-w-3xl mx-auto grid grid-cols-6 h-16">
           <button
+            type="button"
             onClick={() => setActiveTab('home')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] ${
-              activeTab === 'home' ? 'text-yellow-400 font-bold' : 'text-slate-400'
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'home' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Home className="w-5 h-5" />
+            <Home className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>홈</span>
           </button>
+
           <button
-            onClick={() => setActiveTab('viewer')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] ${
-              activeTab === 'viewer' ? 'text-yellow-400 font-bold' : 'text-slate-400'
+            type="button"
+            onClick={() => setActiveTab('works')}
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'works' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <BookOpen className="w-5 h-5" />
-            <span>웹툰 뷰어</span>
+            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>작품관</span>
           </button>
+
           <button
-            onClick={() => setActiveTab('membership')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] ${
-              activeTab === 'membership' ? 'text-yellow-400 font-bold' : 'text-slate-400'
+            type="button"
+            onClick={() => setActiveTab('viewer')}
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'viewer' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Crown className="w-5 h-5" />
+            <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>뷰어</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('membership')}
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'membership' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>멤버십</span>
           </button>
+
           <button
+            type="button"
             onClick={() => setActiveTab('community')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] ${
-              activeTab === 'community' ? 'text-yellow-400 font-bold' : 'text-slate-400'
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'community' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <MessageSquare className="w-5 h-5" />
+            <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>커뮤니티</span>
           </button>
+
           <button
+            type="button"
             onClick={() => setActiveTab('settings')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] ${
-              activeTab === 'settings' || activeTab === 'studio' ? 'text-yellow-400 font-bold' : 'text-slate-400'
+            className={`flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition ${
+              activeTab === 'settings' ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Settings className="w-5 h-5" />
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>설정</span>
           </button>
         </div>

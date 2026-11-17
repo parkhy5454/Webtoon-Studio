@@ -1,19 +1,19 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: '웹툰스튜디오스 - 오픈 웹툰 창작 & 구독 플랫폼',
-  description: '작가와 독자가 함께 만드는 웹툰 스튜디오',
+  title: "툰스튜디오스 (Toon Studios)",
+  description: "오리지널 웹툰 스트리밍 & 스튜디오 검수 플랫폼",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="ko">
-      <body className="bg-slate-950 text-white min-h-screen antialiased">
+      <body className="antialiased min-h-screen bg-slate-950 text-slate-100">
         {children}
       </body>
     </html>
