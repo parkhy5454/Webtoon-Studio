@@ -73,7 +73,6 @@ interface UserAccount {
   role: UserRole;
   displayName: string;
   email: string;
-  password: string;
   joinedAt: string;
 }
 
@@ -138,7 +137,7 @@ const INITIAL_WORKS: WebtoonWork[] = [
 ];
 
 const STORAGE_KEYS = {
-  USERS: 'webtoon_studios_users_v2',
+  LEGACY_USERS: 'webtoon_studios_users_v2',
   CURRENT_USER: 'webtoon_studios_current_user_v2',
   CUSTOM_WORKS: 'webtoon_studios_custom_works_v1',
 };
@@ -164,7 +163,6 @@ export default function WebtoonStudioPage() {
   const [adminSuccessMsg, setAdminSuccessMsg] = useState<string>('');
 
   // 회원(일반 독자 / 작가) 계정 상태
-  const [users, setUsers] = useState<UserAccount[]>([]);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [signupRole, setSignupRole] = useState<'reader' | 'creator'>('reader');
@@ -200,15 +198,25 @@ export default function WebtoonStudioPage() {
   // 로컬 스토리지에서 회원 계정 및 등록된 공유 작품 불러오기
   useEffect(() => {
     try {
-      const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+      const savedUsers = localStorage.getItem(STORAGE_KEYS.LEGACY_USERS);
       if (savedUsers) {
-        setUsers(JSON.parse(savedUsers));
+        const legacyUsers = JSON.parse(savedUsers);
+        if (Array.isArray(legacyUsers) && legacyUsers.length > 0) {
+          fetch('/api/auth/migrate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ users: legacyUsers }),
+          }).then((response) => {
+            if (response.ok) localStorage.removeItem(STORAGE_KEYS.LEGACY_USERS);
+          }).catch(() => undefined);
+        }
       }
       const savedCurrent = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
       if (savedCurrent) {
         const parsedUser: UserAccount = JSON.parse(savedCurrent);
-        setCurrentUser(parsedUser);
+        // 관리자 데모 로그인만 로컬 저장소를 사용합니다. 독자/창작자는 서버 세션에서 복원합니다.
         if (parsedUser.role === 'admin') {
+          setCurrentUser(parsedUser);
           setIsAdminReview(true);
         }
       }
@@ -222,6 +230,19 @@ export default function WebtoonStudioPage() {
     } catch {
       // 스토리지 접근 오류 무시
     }
+
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.user) {
+          setCurrentUser(data.user as UserAccount);
+          setIsAdminReview(false);
+        }
+      })
+      .catch(() => {
+        // API가 연결되지 않았으면 기존 관리자 로컬 로그인만 유지합니다.
+      });
   }, []);
 
   const persistCustomWorks = (updatedWorks: WebtoonWork[]) => {
@@ -312,9 +333,9 @@ export default function WebtoonStudioPage() {
         role: 'admin',
         displayName: '총괄 관리자',
         email: 'admin@webtoonstudios.kr',
-        password: '',
         joinedAt: '2026',
       };
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
       setIsAdminReview(true);
       setCurrentUser(adminAccount);
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
@@ -330,6 +351,9 @@ export default function WebtoonStudioPage() {
 
   // 통합 로그아웃 (일반 독자 / 작가 / 관리자 모두 로그아웃)
   const handleLogoutAll = () => {
+    if (currentUser?.role !== 'admin') {
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+    }
     setCurrentUser(null);
     setIsAdminReview(false);
     setShowAdminPanel(false);
@@ -339,7 +363,7 @@ export default function WebtoonStudioPage() {
   };
 
   // 회원가입 / 로그인 핸들러 (일반 독자 & 작가 + 관리자 이메일 로그인 지원)
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
 
@@ -361,23 +385,23 @@ export default function WebtoonStudioPage() {
         );
         return;
       }
-      if (users.some((u) => u.email === email)) {
-        setAuthError('이미 가입된 이메일입니다. 로그인 탭을 이용해주세요.');
+      try {
+        const response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ displayName: name, email, password, role: signupRole }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setAuthError(data.error || '회원가입에 실패했습니다.');
+          return;
+        }
+        const newAccount = data.user as UserAccount;
+        setCurrentUser(newAccount);
+      } catch {
+        setAuthError('서버에 연결할 수 없습니다. DATABASE_URL 설정과 배포 상태를 확인해 주세요.');
         return;
       }
-      const newAccount: UserAccount = {
-        id: `${signupRole}-${Date.now()}`,
-        role: signupRole,
-        displayName: name,
-        email,
-        password,
-        joinedAt: new Date().toLocaleDateString('ko-KR'),
-      };
-      const updatedUsers = [...users, newAccount];
-      setUsers(updatedUsers);
-      setCurrentUser(newAccount);
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(newAccount));
       setDisplayNameInput('');
       setEmailInput('');
       setPasswordInput('');
@@ -394,9 +418,9 @@ export default function WebtoonStudioPage() {
           role: 'admin',
           displayName: '총괄 관리자',
           email: 'admin@webtoon.kr',
-          password: '',
           joinedAt: '2026',
         };
+        fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
         setCurrentUser(adminAccount);
         setIsAdminReview(true);
         localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
@@ -406,33 +430,46 @@ export default function WebtoonStudioPage() {
         return;
       }
 
-      const found = users.find((u) => u.email === email && u.password === password);
-      if (!found) {
-        setAuthError('이메일 또는 비밀번호가 올바르지 않습니다.');
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setAuthError(data.error || '이메일 또는 비밀번호가 올바르지 않습니다.');
+          return;
+        }
+        const found = data.user as UserAccount;
+        setCurrentUser(found);
+        setIsAdminReview(false);
+        setEmailInput('');
+        setPasswordInput('');
+        showToast(`${found.displayName}님(${found.role === 'creator' ? '작가' : '일반 회원'})으로 로그인되었습니다.`);
+      } catch {
+        setAuthError('서버에 연결할 수 없습니다. DATABASE_URL 설정과 배포 상태를 확인해 주세요.');
         return;
       }
-      setCurrentUser(found);
-      setIsAdminReview(found.role === 'admin');
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(found));
-      setEmailInput('');
-      setPasswordInput('');
-      showToast(
-        `${found.displayName}님(${
-          found.role === 'creator' ? '작가' : '일반 회원'
-        })으로 로그인되었습니다.`
-      );
     }
   };
 
   // 일반 독자 -> 작가 전환 버튼
-  const handleUpgradeToCreator = () => {
+  const handleUpgradeToCreator = async () => {
     if (!currentUser) return;
-    const upgraded: UserAccount = { ...currentUser, role: 'creator' };
-    const updatedUsers = users.map((u) => (u.id === currentUser.id ? upgraded : u));
-    setUsers(updatedUsers);
-    setCurrentUser(upgraded);
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(upgraded));
+    try {
+      const response = await fetch('/api/auth/upgrade', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) {
+        showToast(data.error || '작가 계정 전환에 실패했습니다.');
+        return;
+      }
+      const upgraded = data.user as UserAccount;
+      setCurrentUser(upgraded);
+    } catch {
+      showToast('서버에 연결할 수 없습니다.');
+      return;
+    }
     showToast(`${upgraded.displayName}님, 작가 계정으로 전환되었습니다!`);
   };
 
@@ -1644,9 +1681,13 @@ export default function WebtoonStudioPage() {
                         type="password"
                         value={passwordInput}
                         onChange={(e) => setPasswordInput(e.target.value)}
+                        minLength={authMode === 'signup' ? 8 : undefined}
                         placeholder="비밀번호 입력"
                         className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
                       />
+                      {authMode === 'signup' && (
+                        <p className="mt-1 text-[11px] text-slate-500">비밀번호는 8자 이상이어야 합니다.</p>
+                      )}
                     </div>
 
                     {authError && (
