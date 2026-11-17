@@ -689,7 +689,7 @@ export default function WebtoonStudioPage() {
       }
       if (batch.length) batches.push(batch);
 
-      for (const [batchIndex, uploadBatch] of batches.entries()) {
+      for (const uploadBatch of batches) {
         const formData = new FormData();
         uploadBatch.forEach((file) => formData.append('files', file, file.name));
         let response: Response;
