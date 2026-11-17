@@ -113,7 +113,11 @@ const INITIAL_COMMENTS: CommentItem[] = [
   },
 ];
 
-const SAFE_EPISODES_100 = EPISODES_100 as unknown as Episode[];
+const SAFE_EPISODES_100: Episode[] = EPISODES_100.map((episode) => ({
+  ...episode,
+  num: episode.epNumber,
+  cuts: episode.cuts as unknown as EpisodeCut[],
+}));
 
 const compressCutImage = async (file: File): Promise<File> => {
   const bitmap = await createImageBitmap(file);
@@ -193,6 +197,10 @@ export default function WebtoonStudioPage() {
   const [works, setWorks] = useState<WebtoonWork[]>(INITIAL_WORKS);
   const [selectedWorkId, setSelectedWorkId] = useState<string>('work-dalbit');
   const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [catalogGenre, setCatalogGenre] = useState('all');
+  const [catalogSort, setCatalogSort] = useState<'latest' | 'popular'>('latest');
+  const [catalogWorkId, setCatalogWorkId] = useState<string | null>(null);
 
   // 멤버십 & 관리자 검수 모드 상태 (기본 화면에서는 비공개)
   const [isMember, setIsMember] = useState<boolean>(false);
@@ -374,6 +382,34 @@ export default function WebtoonStudioPage() {
     }
     return true;
   };
+
+  useEffect(() => {
+    if (activeTab !== 'works') return;
+    let cancelled = false;
+    const refreshWorks = async () => {
+      try {
+        const response = await fetch('/api/creator/works', { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!Array.isArray(data.works) || cancelled) return;
+        const incoming = data.works as WebtoonWork[];
+        setWorks((previous) => {
+          const merged = new Map<string, WebtoonWork>();
+          [...previous, ...incoming].forEach((work) => merged.set(work.id, work));
+          return Array.from(merged.values());
+        });
+      } catch { /* Keep the existing catalog available while offline. */ }
+    };
+    void refreshWorks();
+    const interval = window.setInterval(() => { void refreshWorks(); }, 30000);
+    const onFocus = () => { void refreshWorks(); };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [activeTab]);
 
   // 상단 왼쪽 로고/타이틀 클릭 시 홈 메인 화면으로 이동
   const handleGoHome = () => {
@@ -923,6 +959,22 @@ export default function WebtoonStudioPage() {
     : [];
 
   const isLoggedIn = Boolean(currentUser || isAdminReview);
+  const catalogGenres = Array.from(new Set(
+    works.flatMap((work) => work.genre.split(/[·,/]/).map((genre) => genre.trim()).filter(Boolean))
+  )).sort((a, b) => a.localeCompare(b, 'ko'));
+  const catalogWorks = works.filter((work) => {
+    const query = catalogQuery.trim().toLocaleLowerCase();
+    return (!query || [work.title, work.authorName, work.genre, work.synopsis]
+      .some((value) => value.toLocaleLowerCase().includes(query))) &&
+      (catalogGenre === 'all' || work.genre.split(/[·,/]/).some((genre) => genre.trim() === catalogGenre));
+  }).sort((a, b) => {
+    if (catalogSort === 'popular') return (b.subscribers || 0) - (a.subscribers || 0);
+    const aRegistered = Number(a.id.match(/^work-(\d+)$/)?.[1] || 0);
+    const bRegistered = Number(b.id.match(/^work-(\d+)$/)?.[1] || 0);
+    return bRegistered - aRegistered || works.indexOf(b) - works.indexOf(a);
+  });
+  const catalogSelectedWork = works.find((work) => work.id === catalogWorkId);
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
@@ -1175,16 +1227,46 @@ export default function WebtoonStudioPage() {
                 </button>
               </div>
 
+              <div className="space-y-3">
+                <input type="search" aria-label="작품 검색" value={catalogQuery}
+                  onChange={(event) => setCatalogQuery(event.target.value)}
+                  placeholder="작품명·작가명 검색"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-amber-400" />
+                <div className="grid grid-cols-2 gap-3">
+                  <select aria-label="장르 선택" value={catalogGenre}
+                    onChange={(event) => setCatalogGenre(event.target.value)}
+                    className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white">
+                    <option value="all">전체 장르</option>
+                    {catalogGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
+                  </select>
+                  <select aria-label="작품 정렬" value={catalogSort}
+                    onChange={(event) => setCatalogSort(event.target.value as 'latest' | 'popular')}
+                    className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white">
+                    <option value="latest">최신 등록순</option>
+                    <option value="popular">인기순</option>
+                  </select>
+                </div>
+                <p className="text-xs text-slate-400">{catalogWorks.length}편 표시</p>
+              </div>
+              {catalogWorks.length === 0 && (
+                <div className="p-8 rounded-xl bg-slate-900 text-center">
+                  <p className="text-sm text-slate-300">검색 조건에 맞는 작품이 없습니다.</p>
+                  <button type="button" onClick={() => { setCatalogQuery(''); setCatalogGenre('all'); }}
+                    className="mt-3 text-xs text-amber-300">전체 작품 보기</button>
+                </div>
+              )}
               <div className="grid sm:grid-cols-2 gap-3">
-                {works.map((work) => {
-                  const isSelected = work.id === currentWork.id;
+                {catalogWorks.map((work) => {
+                  const isSelected = work.id === catalogWorkId;
                   return (
                     <button
                       key={work.id}
                       type="button"
                       onClick={() => {
+                        setCatalogWorkId(work.id);
                         setSelectedWorkId(work.id);
                         setSelectedEpisodeNum(1);
+                        window.setTimeout(() => document.getElementById('catalog-work-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
                       }}
                       className={`p-4 rounded-2xl border text-left transition flex items-start gap-3.5 ${
                         isSelected
@@ -1222,6 +1304,7 @@ export default function WebtoonStudioPage() {
                         <p className="text-xs text-slate-400 mt-0.5">
                           글/그림 · {work.authorName}
                         </p>
+                        <p className="text-xs text-slate-300 line-clamp-2 mt-2 leading-relaxed">{work.synopsis}</p>
                         <p className="text-[11px] text-amber-400/90 mt-1.5 font-medium">
                           총 {work.episodes.length}화 연재중
                         </p>
@@ -1232,24 +1315,26 @@ export default function WebtoonStudioPage() {
               </div>
             </div>
 
+            {catalogSelectedWork && (
+              <div id="catalog-work-detail" className="space-y-5 scroll-mt-20">
             {/* 선택된 작품 상세 카드 */}
             <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-7">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-semibold border border-amber-400/30 mb-3">
                 <Sparkles className="w-3.5 h-3.5" />
-                {currentWork.authorName} · {currentWork.genre}
+                {catalogSelectedWork.authorName} · {catalogSelectedWork.genre}
               </div>
               <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mb-2.5">
-                {currentWork.title}
+                {catalogSelectedWork.title}
               </h2>
               <p className="text-sm text-slate-300 leading-relaxed mb-5">
-                {currentWork.synopsis}
+                {catalogSelectedWork.synopsis}
               </p>
 
               <div className="grid grid-cols-3 gap-3 mb-5 text-center">
                 <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
                   <div className="text-[11px] text-slate-400 mb-0.5">등록 회차</div>
                   <div className="text-sm sm:text-base font-bold text-white">
-                    총 {currentWork.episodes.length}화
+                    총 {catalogSelectedWork.episodes.length}화
                   </div>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
@@ -1266,12 +1351,12 @@ export default function WebtoonStudioPage() {
 
               <button
                 type="button"
-                disabled={currentWork.episodes.length === 0}
-                onClick={() => handleSelectWorkAndEpisode(currentWork.id, 1)}
+                disabled={catalogSelectedWork.episodes.length === 0}
+                onClick={() => handleSelectWorkAndEpisode(catalogSelectedWork.id, 1)}
                 className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-bold text-sm transition flex items-center justify-center gap-2"
               >
                 <Play className="w-4 h-4 fill-slate-950" />
-                {currentWork.episodes.length > 0
+                {catalogSelectedWork.episodes.length > 0
                   ? '제 1화 첫 화부터 감상하기'
                   : '아직 업로드된 회차가 없습니다'}
               </button>
@@ -1281,7 +1366,7 @@ export default function WebtoonStudioPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold text-white">
-                  회차 목록 ({currentWork.episodes.length}화)
+                  회차 목록 ({catalogSelectedWork.episodes.length}화)
                 </h3>
                 <span className="text-xs text-slate-400">
                   {isAdminLoggedIn
@@ -1292,7 +1377,7 @@ export default function WebtoonStudioPage() {
                 </span>
               </div>
 
-              {currentWork.episodes.length === 0 ? (
+              {catalogSelectedWork.episodes.length === 0 ? (
                 <div className="p-8 rounded-2xl border border-slate-800 bg-slate-900/50 text-center space-y-3">
                   <p className="text-sm text-slate-400">아직 등록된 회차가 없습니다.</p>
                   <button
@@ -1305,15 +1390,15 @@ export default function WebtoonStudioPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-800/80 rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
-                  {currentWork.episodes.map((ep) => {
-                    const unlocked = canAccessEpisode(currentWork, ep.num);
+                  {catalogSelectedWork.episodes.map((ep) => {
+                    const unlocked = canAccessEpisode(catalogSelectedWork, ep.num);
                     const thumb = ep.cuts?.[0]?.img;
 
                     return (
                       <button
                         key={ep.num}
                         type="button"
-                        onClick={() => handleSelectWorkAndEpisode(currentWork.id, ep.num)}
+                        onClick={() => handleSelectWorkAndEpisode(catalogSelectedWork.id, ep.num)}
                         className="w-full flex items-center justify-between p-3.5 hover:bg-slate-800/70 transition text-left"
                       >
                         <div className="flex items-center gap-3.5 min-w-0">
@@ -1340,7 +1425,7 @@ export default function WebtoonStudioPage() {
                               )}
                             </div>
                             <p className="text-sm font-semibold text-white truncate mt-0.5">
-                              제 {ep.num}화 - {ep.title}
+                              제 {ep.num}화 - {ep.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim()}
                             </p>
                             <p className="text-xs text-slate-400 truncate">
                               {ep.cuts?.length || 0}컷 수록
@@ -1367,6 +1452,8 @@ export default function WebtoonStudioPage() {
                 </div>
               )}
             </div>
+              </div>
+            )}
           </div>
         )}
 
