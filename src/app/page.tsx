@@ -299,8 +299,7 @@ export default function WebtoonStudioApp() {
       {/* 메인 화면 영역 */}
       <main className="max-w-4xl mx-auto p-4 space-y-6">
         {/* 1. 홈 탭 */}
-        {
-        {activeTab === 'home' && (
+                {activeTab === 'home' && (
           <div className="space-y-6">
             {/* 메인 히어로 배너 */}
             <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-8 space-y-6 relative overflow-hidden shadow-2xl">
