@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import EpisodeUploadForm, { CutItem } from '@/components/EpisodeUploadForm';
+import EpisodeUploadForm from '@/components/EpisodeUploadForm';
 import {
   Home,
   BookOpen,
@@ -22,6 +22,15 @@ import {
 } from 'lucide-react';
 
 type MainTab = 'home' | 'viewer' | 'membership' | 'community' | 'settings' | 'studio';
+
+interface CutItem {
+  id: number;
+  imageUrl: string;
+  description: string;
+  sfx: string;
+  narration: string;
+  dialogue: string;
+}
 
 interface EpisodeRecord {
   episodeNum: number;
