@@ -4,6 +4,11 @@ import { ensureAuthSchema, getSessionUser } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
+type CreatorWorkPayload = Record<string, unknown> & {
+  id: string;
+  authorId: string;
+};
+
 export async function GET() {
   if (!hasDatabaseUrl()) return NextResponse.json({ works: [] });
   try {
@@ -28,8 +33,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '창작자 로그인 후 작품을 저장해 주세요.' }, { status: 401 });
     }
     const body = await request.json();
-    const works = Array.isArray(body.works) ? body.works.slice(0, 100) : [];
-    const ownWorks = works.filter((work) => work && typeof work.id === 'string' && work.authorId === user.id);
+    const works: unknown[] = Array.isArray(body.works) ? body.works.slice(0, 100) : [];
+    const ownWorks = works.filter((item): item is CreatorWorkPayload => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+      const work = item as Record<string, unknown>;
+      return typeof work.id === 'string' && work.authorId === user.id;
+    });
     const sql = getSql();
     for (const work of ownWorks) {
       await sql`
