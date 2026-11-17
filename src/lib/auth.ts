@@ -36,6 +36,26 @@ export async function ensureAuthSchema() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS webtoon_sessions_user_id_idx ON webtoon_sessions(user_id)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS webtoon_assets (
+      id TEXT PRIMARY KEY,
+      uploader_user_id TEXT NOT NULL REFERENCES webtoon_users(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      data_base64 TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS webtoon_creator_works (
+      id TEXT PRIMARY KEY,
+      author_id TEXT NOT NULL REFERENCES webtoon_users(id) ON DELETE CASCADE,
+      payload JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS webtoon_creator_works_author_idx ON webtoon_creator_works(author_id)`;
 }
 
 export async function hashPassword(password: string) {

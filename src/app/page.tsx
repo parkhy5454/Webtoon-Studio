@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Home,
   BookOpen,
@@ -120,6 +120,38 @@ const INITIAL_COMMENTS: CommentItem[] = [
 
 const SAFE_EPISODES_100 = EPISODES_100 as unknown as Episode[];
 
+const compressCutImage = async (file: File): Promise<File> => {
+  const bitmap = await createImageBitmap(file);
+  let maxDimension = 1500;
+  let quality = 0.82;
+  let blob: Blob | null = null;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) {
+      bitmap.close();
+      throw new Error('이미지 변환을 시작하지 못했습니다.');
+    }
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+    if (blob && blob.size <= 850 * 1024) break;
+    maxDimension -= 150;
+    quality -= 0.08;
+  }
+  bitmap.close();
+
+  if (!blob || blob.size > 2 * 1024 * 1024) {
+    throw new Error(`${file.name}: 이미지 압축 후에도 용량이 너무 큽니다.`);
+  }
+  const extension = blob.type === 'image/webp' ? 'webp' : blob.type === 'image/png' ? 'png' : 'jpg';
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'cut';
+  return new File([blob], `${baseName}.${extension}`, { type: blob.type || 'image/jpeg' });
+};
+
 const INITIAL_WORKS: WebtoonWork[] = [
   {
     id: 'work-dalbit',
@@ -183,6 +215,10 @@ export default function WebtoonStudioPage() {
   const [newEpCuts, setNewEpCuts] = useState<EpisodeCut[]>([
     { img: '', scene: '', narration: '', dialogue: '', sfx: '' },
   ]);
+  const [isDraggingCutFiles, setIsDraggingCutFiles] = useState<boolean>(false);
+  const [isUploadingCutFiles, setIsUploadingCutFiles] = useState<boolean>(false);
+  const [cutFileError, setCutFileError] = useState<string>('');
+  const cutFileInputRef = useRef<HTMLInputElement>(null);
 
   // 좋아요 & 댓글 & 토스트
   const [likedEpisodes, setLikedEpisodes] = useState<string[]>(['work-dalbit-1']);
@@ -197,12 +233,13 @@ export default function WebtoonStudioPage() {
 
   // 로컬 스토리지에서 회원 계정 및 등록된 공유 작품 불러오기
   useEffect(() => {
+    let localCustomWorks: WebtoonWork[] = [];
     try {
       const savedUsers = localStorage.getItem(STORAGE_KEYS.LEGACY_USERS);
       if (savedUsers) {
         const legacyUsers = JSON.parse(savedUsers);
         if (Array.isArray(legacyUsers) && legacyUsers.length > 0) {
-          fetch('/api/auth/migrate', {
+          void fetch('/api/auth/migrate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ users: legacyUsers }),
@@ -224,35 +261,106 @@ export default function WebtoonStudioPage() {
       if (savedWorks) {
         const parsedCustom: WebtoonWork[] = JSON.parse(savedWorks);
         if (Array.isArray(parsedCustom) && parsedCustom.length > 0) {
-          setWorks([...INITIAL_WORKS, ...parsedCustom]);
+          localCustomWorks = parsedCustom;
+          setWorks([...INITIAL_WORKS, ...localCustomWorks]);
         }
       }
     } catch {
       // 스토리지 접근 오류 무시
     }
 
-    fetch('/api/auth/me', { cache: 'no-store' })
-      .then(async (response) => {
+    const hydrateServerData = async () => {
+      let sessionUser: UserAccount | null = null;
+      try {
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.user) {
+            sessionUser = data.user as UserAccount;
+            setCurrentUser(sessionUser);
+            setIsAdminReview(false);
+          }
+        }
+      } catch {
+        // API가 연결되지 않았으면 기존 관리자 로컬 로그인만 유지합니다.
+      }
+
+      if (sessionUser?.role === 'creator') {
+        const ownLocalWorks = localCustomWorks.filter((work) => work.authorId === sessionUser?.id);
+        if (ownLocalWorks.length > 0) {
+          try {
+            await fetch('/api/creator/works', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ works: ownLocalWorks }),
+            });
+          } catch {
+            // 네트워크가 복구되면 작가가 다시 저장할 수 있습니다.
+          }
+        }
+      }
+
+      try {
+        const response = await fetch('/api/creator/works', { cache: 'no-store' });
         if (!response.ok) return;
         const data = await response.json();
-        if (data.user) {
-          setCurrentUser(data.user as UserAccount);
-          setIsAdminReview(false);
-        }
-      })
-      .catch(() => {
-        // API가 연결되지 않았으면 기존 관리자 로컬 로그인만 유지합니다.
-      });
+        const databaseWorks = Array.isArray(data.works) ? (data.works as WebtoonWork[]) : [];
+        setWorks((currentWorks) => {
+          const merged = new Map<string, WebtoonWork>();
+          [...INITIAL_WORKS, ...currentWorks.filter((work) => !work.isOfficial), ...databaseWorks]
+            .forEach((work) => merged.set(work.id, work));
+          const updatedWorks = Array.from(merged.values());
+          try {
+            localStorage.setItem(
+              STORAGE_KEYS.CUSTOM_WORKS,
+              JSON.stringify(updatedWorks.filter((work) => !work.isOfficial))
+            );
+          } catch {
+            // DB 데이터는 다음 접속 때 다시 불러옵니다.
+          }
+          return updatedWorks;
+        });
+      } catch {
+        // DB에 연결할 수 없으면 로컬 작품을 그대로 표시합니다.
+      }
+    };
+
+    void hydrateServerData();
   }, []);
 
-  const persistCustomWorks = (updatedWorks: WebtoonWork[]) => {
+  const syncCreatorWorks = async (workList: WebtoonWork[], userId: string) => {
+    const ownWorks = workList.filter((work) => work.authorId === userId);
+    if (ownWorks.length === 0) return true;
+    const response = await fetch('/api/creator/works', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ works: ownWorks }),
+    });
+    return response.ok;
+  };
+
+  const persistCustomWorks = async (updatedWorks: WebtoonWork[]) => {
     setWorks(updatedWorks);
     try {
       const customOnly = updatedWorks.filter((w) => !w.isOfficial);
       localStorage.setItem(STORAGE_KEYS.CUSTOM_WORKS, JSON.stringify(customOnly));
     } catch {
-      // 무시
+      showToast('브라우저 저장 공간이 부족합니다.');
+      return false;
     }
+    if (currentUser?.role === 'creator') {
+      try {
+        const saved = await syncCreatorWorks(updatedWorks, currentUser.id);
+        if (!saved) {
+          showToast('DB 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+          return false;
+        }
+      } catch {
+        showToast('서버에 작품을 저장하지 못했습니다. DATABASE_URL과 배포 상태를 확인해 주세요.');
+        return false;
+      }
+    }
+    return true;
   };
 
   // 상단 왼쪽 로고/타이틀 클릭 시 홈 메인 화면으로 이동
@@ -398,6 +506,10 @@ export default function WebtoonStudioPage() {
         }
         const newAccount = data.user as UserAccount;
         setCurrentUser(newAccount);
+        if (newAccount.role === 'creator') {
+          const saved = await syncCreatorWorks(works, newAccount.id).catch(() => false);
+          if (!saved) showToast('기존 작품을 DB로 옮기지 못했습니다. 작가 스튜디오에서 다시 저장해 주세요.');
+        }
       } catch {
         setAuthError('서버에 연결할 수 없습니다. DATABASE_URL 설정과 배포 상태를 확인해 주세요.');
         return;
@@ -444,6 +556,10 @@ export default function WebtoonStudioPage() {
         const found = data.user as UserAccount;
         setCurrentUser(found);
         setIsAdminReview(false);
+        if (found.role === 'creator') {
+          const saved = await syncCreatorWorks(works, found.id).catch(() => false);
+          if (!saved) showToast('기존 작품을 DB로 옮기지 못했습니다. 작가 스튜디오에서 다시 저장해 주세요.');
+        }
         setEmailInput('');
         setPasswordInput('');
         showToast(`${found.displayName}님(${found.role === 'creator' ? '작가' : '일반 회원'})으로 로그인되었습니다.`);
@@ -474,7 +590,7 @@ export default function WebtoonStudioPage() {
   };
 
   // 새 웹툰 작품 등록 핸들러
-  const handleCreateWork = (e: React.FormEvent) => {
+  const handleCreateWork = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || (currentUser.role !== 'creator' && currentUser.role !== 'admin')) {
       return;
@@ -500,7 +616,8 @@ export default function WebtoonStudioPage() {
     };
 
     const updated = [...works, createdWork];
-    persistCustomWorks(updated);
+    const saved = await persistCustomWorks(updated);
+    if (!saved) return;
     setTargetWorkId(createdWorkId);
     setNewWorkTitle('');
     setNewWorkSynopsis('');
@@ -520,6 +637,63 @@ export default function WebtoonStudioPage() {
     );
   };
 
+  const handleCutImageFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+    );
+    setCutFileError('');
+    if (files.length === 0) return;
+    if (files.length > 5) {
+      setCutFileError('한 회차에 이미지 5장까지 한 번에 선택할 수 있습니다.');
+      return;
+    }
+    const invalidType = files.find((file) => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
+    if (invalidType) {
+      setCutFileError(`${invalidType.name}: JPG, PNG, WEBP 파일만 올릴 수 있습니다.`);
+      return;
+    }
+    const tooLarge = files.find((file) => file.size > 15 * 1024 * 1024);
+    if (tooLarge) {
+      setCutFileError(`${tooLarge.name}: 원본 이미지 한 장은 15MB 이하로 선택해 주세요.`);
+      return;
+    }
+
+    setIsUploadingCutFiles(true);
+    try {
+      const compressedFiles = await Promise.all(files.map(compressCutImage));
+      const totalSize = compressedFiles.reduce((sum, file) => sum + file.size, 0);
+      if (totalSize > 4 * 1024 * 1024) {
+        throw new Error('압축 후 이미지 전체 용량이 4MB를 넘었습니다. 더 작은 이미지를 선택해 주세요.');
+      }
+
+      const formData = new FormData();
+      compressedFiles.forEach((file) => formData.append('files', file, file.name));
+      const response = await fetch('/api/uploads', { method: 'POST', body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '이미지 업로드에 실패했습니다.');
+      if (!Array.isArray(data.assets) || data.assets.length !== files.length) {
+        throw new Error('업로드된 이미지 목록을 확인하지 못했습니다.');
+      }
+
+      setNewEpCuts(
+        data.assets.map((asset: { url: string }) => ({
+          img: asset.url,
+          scene: '',
+          narration: '',
+          dialogue: '',
+          sfx: '',
+        }))
+      );
+      showToast(`${files.length}장 업로드 완료. 회차 공개를 누르면 작품관에 표시됩니다.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.';
+      setCutFileError(message);
+    } finally {
+      setIsUploadingCutFiles(false);
+      if (cutFileInputRef.current) cutFileInputRef.current.value = '';
+    }
+  };
+
   const handleAddCutSlot = () => {
     setNewEpCuts((prev) => [
       ...prev,
@@ -533,7 +707,7 @@ export default function WebtoonStudioPage() {
   };
 
   // 새 회차(에피소드) 업로드 핸들러
-  const handlePublishEpisode = (e: React.FormEvent) => {
+  const handlePublishEpisode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || (currentUser.role !== 'creator' && currentUser.role !== 'admin')) {
       return;
@@ -582,7 +756,8 @@ export default function WebtoonStudioPage() {
       };
     });
 
-    persistCustomWorks(updatedWorks);
+    const saved = await persistCustomWorks(updatedWorks);
+    if (!saved) return;
     setNewEpTitle('');
     setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
     showToast(`《${targetWork.title}》 제 ${nextNum}화가 공개되었습니다!`);
@@ -1938,6 +2113,53 @@ export default function WebtoonStudioPage() {
                                 </div>
                               </div>
 
+                              <div
+                                onDragOver={(event) => {
+                                  event.preventDefault();
+                                  setIsDraggingCutFiles(true);
+                                }}
+                                onDragLeave={() => setIsDraggingCutFiles(false)}
+                                onDrop={(event) => {
+                                  event.preventDefault();
+                                  setIsDraggingCutFiles(false);
+                                  void handleCutImageFiles(event.dataTransfer.files);
+                                }}
+                                className={`rounded-xl border-2 border-dashed p-4 sm:p-5 text-center transition ${
+                                  isDraggingCutFiles
+                                    ? 'border-amber-400 bg-amber-400/10'
+                                    : 'border-slate-700 bg-slate-900/60'
+                                }`}
+                              >
+                                <input
+                                  ref={cutFileInputRef}
+                                  type="file"
+                                  multiple
+                                  accept="image/jpeg,image/png,image/webp"
+                                  className="hidden"
+                                  onChange={(event) => void handleCutImageFiles(event.target.files || [])}
+                                />
+                                <p className="text-sm font-semibold text-white">
+                                  1화 컷 이미지 최대 5장을 한 번에 올리세요
+                                </p>
+                                <p className="mt-1 text-xs text-slate-400">
+                                  파일을 여기로 드래그하거나 파일 찾기로 선택할 수 있습니다. 파일명 순서대로 배치합니다.
+                                </p>
+                                <button
+                                  type="button"
+                                  disabled={isUploadingCutFiles}
+                                  onClick={() => cutFileInputRef.current?.click()}
+                                  className="mt-3 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold"
+                                >
+                                  {isUploadingCutFiles ? '이미지 압축·업로드 중...' : '이미지 파일 찾기'}
+                                </button>
+                                <p className="mt-2 text-[11px] text-slate-500">
+                                  JPG · PNG · WEBP / 원본 한 장당 15MB 이하
+                                </p>
+                                {cutFileError && (
+                                  <p className="mt-3 text-xs text-rose-300">{cutFileError}</p>
+                                )}
+                              </div>
+
                               {/* 컷별 입력 리스트 */}
                               <div className="space-y-3">
                                 <div className="flex items-center justify-between">
@@ -1975,15 +2197,36 @@ export default function WebtoonStudioPage() {
                                       )}
                                     </div>
 
-                                    <input
-                                      type="text"
-                                      value={cut.img || ''}
-                                      onChange={(e) =>
-                                        handleCutFieldChange(idx, 'img', e.target.value)
-                                      }
-                                      placeholder="컷 이미지 URL (예: /images/cut1.png 또는 https://...)"
-                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
-                                    />
+                                    {cut.img.startsWith('/api/uploads/') ? (
+                                      <div className="flex items-center gap-3 rounded-lg bg-slate-950 border border-slate-700 p-2">
+                                        <img
+                                          src={cut.img}
+                                          alt={`제 ${idx + 1}컷 미리보기`}
+                                          className="h-20 w-16 rounded object-cover bg-slate-800"
+                                        />
+                                        <div className="flex-1">
+                                          <p className="text-xs font-semibold text-emerald-300">이미지 업로드 완료</p>
+                                          <p className="mt-1 text-[11px] text-slate-500">이 이미지가 작품 회차에 표시됩니다.</p>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCutFieldChange(idx, 'img', '')}
+                                          className="text-xs text-rose-300 hover:text-rose-200"
+                                        >
+                                          제거
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        value={cut.img || ''}
+                                        onChange={(e) =>
+                                          handleCutFieldChange(idx, 'img', e.target.value)
+                                        }
+                                        placeholder="컷 이미지 URL (선택)"
+                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      />
+                                    )}
                                     <div className="grid sm:grid-cols-2 gap-2">
                                       <input
                                         type="text"
