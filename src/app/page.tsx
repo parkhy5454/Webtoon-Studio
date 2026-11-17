@@ -147,6 +147,22 @@ const compressCutImage = async (file: File): Promise<File> => {
   return new File([blob], `${baseName}.${extension}`, { type: blob.type || 'image/jpeg' });
 };
 
+const checkImageUrl = (url: string): Promise<boolean> =>
+  new Promise((resolve) => {
+    const image = new Image();
+    let timeout: number | undefined;
+    const finish = (loaded: boolean) => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      image.onload = null;
+      image.onerror = null;
+      resolve(loaded && image.naturalWidth > 0);
+    };
+    image.onload = () => finish(true);
+    image.onerror = () => finish(false);
+    timeout = window.setTimeout(() => finish(false), 15000);
+    image.src = url;
+  });
+
 const INITIAL_WORKS: WebtoonWork[] = [
   {
     id: 'work-dalbit',
@@ -211,6 +227,9 @@ export default function WebtoonStudioPage() {
   const [isDraggingCutFiles, setIsDraggingCutFiles] = useState<boolean>(false);
   const [isUploadingCutFiles, setIsUploadingCutFiles] = useState<boolean>(false);
   const [cutFileError, setCutFileError] = useState<string>('');
+  const [cutUploadProgress, setCutUploadProgress] = useState<string>('');
+  const [isCheckingCutImages, setIsCheckingCutImages] = useState<boolean>(false);
+  const [cutPreviewErrors, setCutPreviewErrors] = useState<number[]>([]);
   const cutFileInputRef = useRef<HTMLInputElement>(null);
 
   // 좋아요 & 댓글 & 토스트
@@ -614,6 +633,9 @@ export default function WebtoonStudioPage() {
     setNewEpCuts((prev) =>
       prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item))
     );
+    if (field === 'img') {
+      setCutPreviewErrors((prev) => prev.filter((failedIndex) => failedIndex !== index));
+    }
   };
 
   const handleCutImageFiles = async (fileList: FileList | File[]) => {
@@ -621,11 +643,9 @@ export default function WebtoonStudioPage() {
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     );
     setCutFileError('');
+    setCutUploadProgress('');
     if (files.length === 0) return;
-    if (files.length > 5) {
-      setCutFileError('한 회차에 이미지 5장까지 한 번에 선택할 수 있습니다.');
-      return;
-    }
+    if (isUploadingCutFiles) return;
     const invalidType = files.find((file) => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
     if (invalidType) {
       setCutFileError(`${invalidType.name}: JPG, PNG, WEBP 파일만 올릴 수 있습니다.`);
@@ -638,35 +658,110 @@ export default function WebtoonStudioPage() {
     }
 
     setIsUploadingCutFiles(true);
+    setCutUploadProgress('압축 중');
+    const uploadedAssets: { url: string; fileName?: string }[] = [];
     try {
-      const compressedFiles = await Promise.all(files.map(compressCutImage));
-      const totalSize = compressedFiles.reduce((sum, file) => sum + file.size, 0);
-      if (totalSize > 4 * 1024 * 1024) {
-        throw new Error('압축 후 이미지 전체 용량이 4MB를 넘었습니다. 더 작은 이미지를 선택해 주세요.');
+      const compressedFiles: File[] = [];
+      for (const file of files) {
+        try {
+          compressedFiles.push(await compressCutImage(file));
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : '이미지 압축에 실패했습니다.';
+          throw new Error(`${file.name}: ${reason}`);
+        }
       }
 
-      const formData = new FormData();
-      compressedFiles.forEach((file) => formData.append('files', file, file.name));
-      const response = await fetch('/api/uploads', { method: 'POST', body: formData });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '이미지 업로드에 실패했습니다.');
-      if (!Array.isArray(data.assets) || data.assets.length !== files.length) {
-        throw new Error('업로드된 이미지 목록을 확인하지 못했습니다.');
+      setCutUploadProgress('업로드 준비');
+      const batches: File[][] = [];
+      let batch: File[] = [];
+      let batchBytes = 0;
+      for (const file of compressedFiles) {
+        if (batch.length >= 5 || batchBytes + file.size > 4 * 1024 * 1024) {
+          if (batch.length) batches.push(batch);
+          batch = [];
+          batchBytes = 0;
+        }
+        if (file.size > 4 * 1024 * 1024) {
+          throw new Error(`${file.name}: 압축 후에도 업로드 요청 용량을 초과했습니다.`);
+        }
+        batch.push(file);
+        batchBytes += file.size;
+      }
+      if (batch.length) batches.push(batch);
+
+      for (const [batchIndex, uploadBatch] of batches.entries()) {
+        const formData = new FormData();
+        uploadBatch.forEach((file) => formData.append('files', file, file.name));
+        let response: Response;
+        let data: { error?: string; assets?: { url?: string; fileName?: string }[] };
+        try {
+          response = await fetch('/api/uploads', { method: 'POST', body: formData });
+          data = await response.json();
+        } catch {
+          throw new Error(`${uploadBatch.map((file) => file.name).join(', ')}: 서버 응답을 받지 못했습니다.`);
+        }
+        if (!response.ok) {
+          throw new Error(data.error || `${uploadBatch.map((file) => file.name).join(', ')}: 업로드에 실패했습니다.`);
+        }
+        if (
+          !Array.isArray(data.assets) ||
+          data.assets.length !== uploadBatch.length ||
+          data.assets.some((asset) => !asset || typeof asset.url !== 'string')
+        ) {
+          throw new Error(`${uploadBatch.map((file) => file.name).join(', ')}: 저장된 이미지 목록을 확인하지 못했습니다.`);
+        }
+        uploadedAssets.push(
+          ...data.assets.map((asset, index) => ({
+            url: asset.url as string,
+            fileName: asset.fileName || uploadBatch[index].name,
+          }))
+        );
+        setCutUploadProgress(`${uploadedAssets.length}/${files.length}`);
       }
 
-      setNewEpCuts(
-        data.assets.map((asset: { url: string }) => ({
-          img: asset.url,
-          scene: '',
-          narration: '',
-          dialogue: '',
-          sfx: '',
-        }))
-      );
-      showToast(`${files.length}장 업로드 완료. 회차 공개를 누르면 작품관에 표시됩니다.`);
+      setNewEpCuts((prev) => [
+          ...prev.filter((cut) =>
+            (cut.img || '').trim() ||
+            (cut.scene || '').trim() ||
+            (cut.narration || '').trim() ||
+            (cut.dialogue || '').trim() ||
+            (cut.sfx || '').trim()
+          ),
+          ...uploadedAssets.map((asset) => ({
+            img: asset.url,
+            scene: '',
+            narration: '',
+            dialogue: '',
+            sfx: '',
+          })),
+        ]);
+      setCutPreviewErrors([]);
+      showToast(`${uploadedAssets.length}장 업로드 완료. 미리보기 확인 후 회차를 공개해 주세요.`);
     } catch (error) {
+      if (uploadedAssets.length > 0) {
+        setNewEpCuts((prev) => [
+          ...prev.filter((cut) =>
+            (cut.img || '').trim() ||
+            (cut.scene || '').trim() ||
+            (cut.narration || '').trim() ||
+            (cut.dialogue || '').trim() ||
+            (cut.sfx || '').trim()
+          ),
+          ...uploadedAssets.map((asset) => ({
+            img: asset.url,
+            scene: '',
+            narration: '',
+            dialogue: '',
+            sfx: '',
+          })),
+        ]);
+        setCutPreviewErrors([]);
+      }
       const message = error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.';
-      setCutFileError(message);
+      const partialMessage = uploadedAssets.length
+        ? ` ${uploadedAssets.length}/${files.length}장은 업로드되었습니다. 실패한 이미지를 다시 선택해 주세요.`
+        : '';
+      setCutFileError(message + partialMessage);
     } finally {
       setIsUploadingCutFiles(false);
       if (cutFileInputRef.current) cutFileInputRef.current.value = '';
@@ -683,6 +778,11 @@ export default function WebtoonStudioPage() {
   const handleRemoveCutSlot = (index: number) => {
     if (newEpCuts.length <= 1) return;
     setNewEpCuts((prev) => prev.filter((_, idx) => idx !== index));
+    setCutPreviewErrors((prev) =>
+      prev.filter((failedIndex) => failedIndex !== index).map((failedIndex) =>
+        failedIndex > index ? failedIndex - 1 : failedIndex
+      )
+    );
   };
 
   // 새 회차(에피소드) 업로드 핸들러
@@ -701,28 +801,64 @@ export default function WebtoonStudioPage() {
       setCreatorSubTab('newWork');
       return;
     }
-    if (!newEpTitle.trim()) {
+    const cleanEpisodeTitle = newEpTitle.trim().replace(/^제\s*\d+\s*화\s*[-:：–—]?\s*/, '').trim();
+    if (!cleanEpisodeTitle) {
       showToast('회차 제목을 입력해주세요.');
       return;
     }
 
-    const validCuts = newEpCuts.filter(
-      (c) =>
-        (c.img || '').trim() ||
-        (c.scene || '').trim() ||
-        (c.narration || '').trim() ||
-        (c.dialogue || '').trim()
-    );
+    const activeCuts = newEpCuts
+      .map((cut, index) => ({ cut, index }))
+      .filter(({ cut }) =>
+        (cut.img || '').trim() ||
+        (cut.scene || '').trim() ||
+        (cut.narration || '').trim() ||
+        (cut.dialogue || '').trim() ||
+        (cut.sfx || '').trim()
+      );
 
-    if (validCuts.length === 0) {
-      showToast('최소 1개 이상의 컷 이미지 URL 또는 대사/장면을 입력해주세요.');
+    if (activeCuts.length === 0) {
+      showToast('회차 이미지를 한 장 이상 업로드해 주세요.');
+      return;
+    }
+    const missingImage = activeCuts.find(({ cut }) => !(cut.img || '').trim());
+    if (missingImage) {
+      const message = `${missingImage.index + 1}번째 컷 이미지가 없습니다. 모든 컷에 이미지를 넣어주세요.`;
+      setCutFileError(message);
+      showToast(message);
       return;
     }
 
+    setIsCheckingCutImages(true);
+    setCutFileError('모든 컷 이미지를 확인하고 있습니다...');
+    setCutPreviewErrors([]);
+    try {
+      const failedIndexes: number[] = [];
+      for (let start = 0; start < activeCuts.length; start += 10) {
+        const batch = activeCuts.slice(start, start + 10);
+        const results = await Promise.all(batch.map(({ cut }) => checkImageUrl(cut.img.trim())));
+        batch.forEach(({ index }, batchIndex) => {
+          if (!results[batchIndex]) failedIndexes.push(index);
+        });
+      }
+      if (failedIndexes.length > 0) {
+        setCutPreviewErrors(failedIndexes);
+        const failedList = failedIndexes.map((index) => index + 1).join(', ');
+        const message = `${failedList}번 컷 이미지가 열리지 않습니다. 파일을 다시 올리거나 주소를 확인해 주세요.`;
+        setCutFileError(message);
+        showToast(message);
+        return;
+      }
+    } finally {
+      setIsCheckingCutImages(false);
+    }
+    setCutFileError('');
+
+    const validCuts = activeCuts.map(({ cut }) => cut);
     const nextNum = targetWork.episodes.length + 1;
     const newEpisode: Episode = {
       num: nextNum,
-      title: newEpTitle.trim(),
+      title: cleanEpisodeTitle,
       cuts: validCuts,
     };
 
@@ -958,9 +1094,9 @@ export default function WebtoonStudioPage() {
                 <div className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center text-amber-400">
                   <Award className="w-5 h-5" />
                 </div>
-                <h2 className="text-sm sm:text-base font-bold text-white">투명한 작가 4 : 6 정산</h2>
+                <h2 className="text-sm sm:text-base font-bold text-white">투명한 작가 5 : 5 정산</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  멤버십 구독 수익의 40%를 연재 작가에게 직접 배분하며, 작가 스튜디오에서 실시간 정산 현황을 제공합니다.
+                  멤버십 구독 수익의 50%를 연재 작가에게 직접 배분하며, 작가 스튜디오에서 실시간 정산 현황을 제공합니다.
                 </p>
               </div>
             </div>
@@ -1126,7 +1262,7 @@ export default function WebtoonStudioPage() {
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
                   <div className="text-[11px] text-slate-400 mb-0.5">수익 배분</div>
-                  <div className="text-sm sm:text-base font-bold text-amber-300">작가 4 : 6</div>
+                  <div className="text-sm sm:text-base font-bold text-amber-300">작가 5 : 5</div>
                 </div>
               </div>
 
@@ -1206,7 +1342,7 @@ export default function WebtoonStudioPage() {
                               )}
                             </div>
                             <p className="text-sm font-semibold text-white truncate mt-0.5">
-                              {ep.title}
+                              제 {ep.num}화 - {ep.title}
                             </p>
                             <p className="text-xs text-slate-400 truncate">
                               {ep.cuts?.length || 0}컷 수록
@@ -1335,7 +1471,7 @@ export default function WebtoonStudioPage() {
                   <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
                     <li>• 전 작품 6화~완결 회차 즉시 열람</li>
                     <li>• 고화질 전체화면 컷 리더 지원</li>
-                    <li>• 구독료 40% 연재 작가 창작 지원 배분</li>
+                    <li>• 구독료 50% 연재 작가 창작 지원 배분</li>
                   </ul>
                 </div>
                 <button
@@ -1708,7 +1844,7 @@ export default function WebtoonStudioPage() {
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
-                          3. 4:6 수익 정산
+                          3. 5:5 수익 정산
                         </button>
                       </div>
 
@@ -1862,10 +1998,13 @@ export default function WebtoonStudioPage() {
                                   onChange={(event) => void handleCutImageFiles(event.target.files || [])}
                                 />
                                 <p className="text-sm font-semibold text-white">
-                                  1화 컷 이미지 최대 5장을 한 번에 올리세요
+                                  회차 컷 이미지를 원하는 수만큼 한 번에 올리세요
                                 </p>
                                 <p className="mt-1 text-xs text-slate-400">
-                                  파일을 여기로 드래그하거나 파일 찾기로 선택할 수 있습니다. 파일명 순서대로 배치합니다.
+                                  파일을 여기로 드래그하거나 파일 찾기로 선택할 수 있습니다. 파일명 순서대로 이어 붙입니다.
+                                </p>
+                                <p className="mt-1 text-[11px] text-emerald-300">
+                                  현재 이미지 {newEpCuts.filter((cut) => (cut.img || '').trim()).length}장 · 원하는 만큼 추가 가능
                                 </p>
                                 <button
                                   type="button"
@@ -1873,10 +2012,10 @@ export default function WebtoonStudioPage() {
                                   onClick={() => cutFileInputRef.current?.click()}
                                   className="mt-3 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold"
                                 >
-                                  {isUploadingCutFiles ? '이미지 압축·업로드 중...' : '이미지 파일 찾기'}
+                                  {isUploadingCutFiles ? `압축·업로드 중... ${cutUploadProgress}` : '이미지 파일 찾기'}
                                 </button>
                                 <p className="mt-2 text-[11px] text-slate-500">
-                                  JPG · PNG · WEBP / 원본 한 장당 15MB 이하
+                                  JPG · PNG · WEBP / 원본 한 장당 15MB 이하 / 파일명 순서로 배치
                                 </p>
                                 {cutFileError && (
                                   <p className="mt-3 text-xs text-rose-300">{cutFileError}</p>
@@ -1920,16 +2059,37 @@ export default function WebtoonStudioPage() {
                                       )}
                                     </div>
 
-                                    {cut.img.startsWith('/api/uploads/') ? (
+                                    <input
+                                      type="text"
+                                      value={cut.img || ''}
+                                      onChange={(e) =>
+                                        handleCutFieldChange(idx, 'img', e.target.value)
+                                      }
+                                      placeholder="컷 이미지 주소 (필수)"
+                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                    />
+                                    {cut.img && (
                                       <div className="flex items-center gap-3 rounded-lg bg-slate-950 border border-slate-700 p-2">
                                         <img
                                           src={cut.img}
-                                          alt={`제 ${idx + 1}컷 미리보기`}
-                                          className="h-20 w-16 rounded object-cover bg-slate-800"
+                                          alt=""
+                                          className={`h-20 w-16 rounded object-cover bg-slate-800 ${cutPreviewErrors.includes(idx) ? 'hidden' : ''}`}
+                                          onLoad={() =>
+                                            setCutPreviewErrors((prev) => prev.filter((failedIndex) => failedIndex !== idx))
+                                          }
+                                          onError={() =>
+                                            setCutPreviewErrors((prev) =>
+                                              prev.includes(idx) ? prev : [...prev, idx]
+                                            )
+                                          }
                                         />
                                         <div className="flex-1">
-                                          <p className="text-xs font-semibold text-emerald-300">이미지 업로드 완료</p>
-                                          <p className="mt-1 text-[11px] text-slate-500">이 이미지가 작품 회차에 표시됩니다.</p>
+                                          {cutPreviewErrors.includes(idx) ? (
+                                            <p className="text-xs font-semibold text-rose-300">이미지를 불러오지 못했습니다. 주소를 확인하거나 다시 업로드해 주세요.</p>
+                                          ) : (
+                                            <p className="text-xs font-semibold text-emerald-300">미리보기 확인됨</p>
+                                          )}
+                                          <p className="mt-1 text-[11px] text-slate-500">회차 공개 전에 모든 이미지가 열리는지 확인합니다.</p>
                                         </div>
                                         <button
                                           type="button"
@@ -1939,16 +2099,6 @@ export default function WebtoonStudioPage() {
                                           제거
                                         </button>
                                       </div>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        value={cut.img || ''}
-                                        onChange={(e) =>
-                                          handleCutFieldChange(idx, 'img', e.target.value)
-                                        }
-                                        placeholder="컷 이미지 URL (선택)"
-                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
-                                      />
                                     )}
                                     <div className="grid sm:grid-cols-2 gap-2">
                                       <input
@@ -1994,10 +2144,11 @@ export default function WebtoonStudioPage() {
 
                               <button
                                 type="submit"
-                                className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition flex items-center justify-center gap-1.5"
+                                disabled={isUploadingCutFiles || isCheckingCutImages}
+                                className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-extrabold text-sm transition flex items-center justify-center gap-1.5"
                               >
                                 <Upload className="w-4 h-4" />
-                                회차 업로드 및 즉시 공개하기
+                                {isCheckingCutImages ? '이미지 확인 중...' : '회차 업로드 및 즉시 공개하기'}
                               </button>
                             </>
                           )}
@@ -2009,7 +2160,7 @@ export default function WebtoonStudioPage() {
                         <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
                           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                             <Coins className="w-4 h-4 text-amber-400" />
-                            작품별 구독 수익 정산 현황 (작가 40% : 플랫폼 60%)
+                            작품별 구독 수익 정산 현황 (작가 50% : 플랫폼 50%)
                           </h3>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
@@ -2022,20 +2173,20 @@ export default function WebtoonStudioPage() {
                             </div>
                             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                               <span className="text-[11px] text-slate-400">
-                                이번 달 예상 정산액 (40%)
+                                이번 달 예상 정산액 (50%)
                               </span>
                               <p className="text-lg font-extrabold text-amber-300 mt-1">
                                 {(
                                   myWorksList.reduce((acc, w) => acc + w.subscribers, 0) *
                                   4900 *
-                                  0.4
+                                  0.5
                                 ).toLocaleString()}
                                 원
                               </p>
                             </div>
                           </div>
                           <p className="text-[11px] text-slate-400 leading-relaxed">
-                            * 멤버십 월 구독료(4,900원) 중 작가 창작 지원 배분율 40%가 작품별 구독 비중 및 열람 수에 따라 자동 산정됩니다.
+                            * 멤버십 월 구독료(4,900원) 중 작가 창작 지원 배분율 50%가 작품별 구독 비중 및 열람 수에 따라 자동 산정됩니다.
                           </p>
                         </div>
                       )}
