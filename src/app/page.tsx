@@ -466,11 +466,11 @@ export default function WebtoonStudioPage() {
       }
       const upgraded = data.user as UserAccount;
       setCurrentUser(upgraded);
+      showToast(`${upgraded.displayName}님, 작가 계정으로 전환되었습니다!`);
     } catch {
       showToast('서버에 연결할 수 없습니다.');
       return;
     }
-    showToast(`${upgraded.displayName}님, 작가 계정으로 전환되었습니다!`);
   };
 
   // 새 웹툰 작품 등록 핸들러
