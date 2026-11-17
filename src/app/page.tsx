@@ -1041,9 +1041,7 @@ export default function WebtoonStudioPage() {
               </h1>
 
               <p className="text-sm sm:text-base text-slate-300 leading-relaxed mb-6 max-w-2xl">
-                웹툰스튜디오스는 독자와 창작자가 직접 만나는 차세대 웹툰 공유·구독 플랫폼입니다.
-                독자는 1~5화 무료 감상 후 멤버십으로 전 작품을 정주행하고, 작가는 복잡한 심사 없이
-                가입 즉시 내 웹툰을 등록해 투명한 수익 배분을 받을 수 있습니다.
+                독자는 무료 회차와 멤버십으로 웹툰을 즐기고, 창작자는 작품을 연재해 수익을 나눕니다.
               </p>
 
               {/* 핵심 CTA 버튼 2종 */}
