@@ -264,10 +264,13 @@ export default function WebtoonStudioPage() {
       cuts: [],
     };
 
+  // 배포자/관리자는 멤버십 결제 여부와 관계없이 전체 회차를 열람할 수 있습니다.
+  const isAdminLoggedIn = Boolean(isAdminReview || currentUser?.role === 'admin');
+
   // 열람 가능 여부 (1~5화 무료, 멤버십/관리자 검수 또는 본인 작품일 때 열람 가능)
   const canAccessEpisode = (work: WebtoonWork, epNum: number) => {
     if (epNum <= 5) return true;
-    if (isMember || isAdminReview || currentUser?.role === 'admin') return true;
+    if (isMember || isAdminLoggedIn) return true;
     if (currentUser && work.authorId === currentUser.id) return true;
     return false;
   };
@@ -593,7 +596,6 @@ export default function WebtoonStudioPage() {
     : [];
 
   const isLoggedIn = Boolean(currentUser || isAdminReview);
-  const isAdminLoggedIn = Boolean(isAdminReview || currentUser?.role === 'admin');
 
   // 컷 렌더링 헬퍼 (일반 뷰어 & 전체화면 리더 공용 스타일)
   const renderCutVisual = (cut: EpisodeCut, idx: number, isReaderMode = false) => {
@@ -1165,7 +1167,11 @@ export default function WebtoonStudioPage() {
                     <span className="text-xs font-bold text-amber-400">
                       제 {currentEpisode.num}화 / {currentWork.episodes.length}화
                     </span>
-                    {currentEpisode.num <= 5 ? (
+                    {isAdminLoggedIn ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                        관리자 전체 열람
+                      </span>
+                    ) : currentEpisode.num <= 5 ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
                         무료 공개
                       </span>
