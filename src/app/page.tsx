@@ -290,41 +290,76 @@ export default function WebtoonStudioApp() {
       {/* 메인 화면 영역 */}
       <main className="max-w-4xl mx-auto p-4 space-y-6">
         {/* 1. 홈 탭 */}
+        {
         {activeTab === 'home' && (
           <div className="space-y-6">
-            <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-2xl p-6 space-y-4">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-400/15 text-yellow-400 text-xs font-bold">
-                <Sparkles className="w-3.5 h-3.5" /> 대표 연재작 · 1~5화 무료 공개
+            {/* 메인 히어로 배너 */}
+            <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-8 space-y-6 relative overflow-hidden shadow-2xl">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-yellow-400/15 text-yellow-400 text-xs font-bold border border-yellow-400/30">
+                <Sparkles className="w-3.5 h-3.5" /> 누구나 작가가 되는 오픈 웹툰 플랫폼
               </span>
-              <h2 className="text-2xl font-black text-white">서울의 달 (1994 달빛 연대기)</h2>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                서울 달동네 옥탑방에 모인 세 청춘 박진우(27), 김도윤(27), 최서윤(25)의 뜨겁고 애틋한 꿈과 사랑 이야기.
-              </p>
+              <div className="space-y-2">
+                <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+                  이야기를 그린 순간,<br />웹툰스튜디오스에서 연재가 시작됩니다
+                </h2>
+                <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl">
+                  웹툰스튜디오스는 독자와 창작자가 직접 만나는 차세대 웹툰 공유·구독 플랫폼입니다. 독자는 1~5화 무료 감상 후 멤버십으로 전 작품을 정주행하고, 작가는 복잡한 심사 없이 가입 즉시 내 웹툰을 등록해 투명한 수익 배분을 받을 수 있습니다.
+                </p>
+              </div>
               <div className="flex flex-wrap gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedEpisode(1);
-                    setActiveTab('viewer');
-                  }}
-                  className="px-5 py-3 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-sm rounded-xl flex items-center gap-2 transition"
+                  onClick={() => setActiveTab('viewer')}
+                  className="px-6 py-3.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-sm rounded-2xl flex items-center gap-2 transition shadow-lg shadow-yellow-400/20"
                 >
-                  <Play className="w-4 h-4 fill-current" /> 1화 첫화보기
+                  <BookOpen className="w-4 h-4" /> 연재 작품관 둘러보기 &rarr;
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('studio')}
-                  className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm rounded-xl border border-slate-700 flex items-center gap-2 transition"
+                  className="px-6 py-3.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm rounded-2xl border border-slate-700 flex items-center gap-2 transition"
                 >
-                  <PenTool className="w-4 h-4 text-indigo-400" /> 작가 스튜디오 (원고 올리기)
+                  <PenTool className="w-4 h-4 text-indigo-400" /> 작가 등록하고 내 작품 연재하기
                 </button>
+              </div>
+            </div>
+
+            {/* 3가지 핵심 기능 카드 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-yellow-400/15 flex items-center justify-center text-yellow-400 font-bold">
+                  ⚡
+                </div>
+                <h3 className="font-bold text-base text-white">1~5화 누구나 무료</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  모든 연재작의 초반 1~5화를 무료로 감상하고, 마음에 드는 작품은 멤버십 구독으로 전체 회차를 정주행하세요.
+                </p>
+              </div>
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-400 font-bold">
+                  ✍️
+                </div>
+                <h3 className="font-bold text-base text-white">즉시 오픈 연재 스튜디오</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  회원가입 후 작가 스튜디오에서 작품 타이틀을 개설부터 컷 이미지·대사·내레이션까지 손쉽게 업로드하고 연재하세요.
+                </p>
+              </div>
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-bold">
+                  💰
+                </div>
+                <h3 className="font-bold text-base text-white">투명한 작가 4:6 정산</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  멤버십 구독 수익의 40%를 연재 작가에게 직접 배분하며, 작가 스튜디오에서 실시간 조회수와 수익을 확인할 수 있습니다.
+                </p>
               </div>
             </div>
 
             {/* 전체 회차 리스트 (1~100화) */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-base">전체 회차 목록 (총 100화)</h3>
+                <h3 className="font-bold text-base text-white">전체 회차 목록 (총 100화)</h3>
                 <span className="text-xs text-slate-400">
                   {isAdmin ? '관리자 모드: 전 회차 열람 가능' : '1~5화 무료 / 6~100화 멤버십'}
                 </span>
@@ -342,7 +377,7 @@ export default function WebtoonStudioApp() {
                       }}
                       className="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 flex items-center justify-between text-xs transition"
                     >
-                      <span className="font-semibold flex items-center gap-1.5">
+                      <span className="font-semibold flex items-center gap-1.5 text-slate-200">
                         제 {ep}화
                         {hasUploadedImages && (
                           <span className="w-2 h-2 rounded-full bg-emerald-400" title="원고 업로드됨" />
@@ -362,7 +397,7 @@ export default function WebtoonStudioApp() {
         )}
 
         {/* 2. 웹툰 뷰어 탭 */}
-        {activeTab === 'viewer' && (
+{activeTab === 'viewer' && (
           <div className="space-y-6">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
