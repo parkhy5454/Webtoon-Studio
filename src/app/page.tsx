@@ -10,10 +10,7 @@ import {
   Settings,
   Lock,
   Unlock,
-  ChevronLeft,
   ChevronRight,
-  Maximize2,
-  X,
   ShieldCheck,
   Sparkles,
   Heart,
@@ -21,8 +18,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
-  Volume2,
-  Layers,
   UserPlus,
   LogIn,
   LogOut,
@@ -182,8 +177,6 @@ export default function WebtoonStudioPage() {
   const [works, setWorks] = useState<WebtoonWork[]>(INITIAL_WORKS);
   const [selectedWorkId, setSelectedWorkId] = useState<string>('work-dalbit');
   const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [fullscreenCutIndex, setFullscreenCutIndex] = useState<number>(0);
 
   // 멤버십 & 관리자 검수 모드 상태 (기본 화면에서는 비공개)
   const [isMember, setIsMember] = useState<boolean>(false);
@@ -365,7 +358,6 @@ export default function WebtoonStudioPage() {
 
   // 상단 왼쪽 로고/타이틀 클릭 시 홈 메인 화면으로 이동
   const handleGoHome = () => {
-    setIsFullscreen(false);
     setActiveTab('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -405,29 +397,16 @@ export default function WebtoonStudioPage() {
   };
 
   const isCurrentAccessible = canAccessEpisode(currentWork, currentEpisode.num);
-
-  // 키보드 방향키로 전체화면 리더 이동
-  useEffect(() => {
-    if (!isFullscreen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsFullscreen(false);
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        setFullscreenCutIndex((prev) =>
-          Math.min(prev + 1, (currentEpisode.cuts?.length || 1) - 1)
-        );
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        setFullscreenCutIndex((prev) => Math.max(prev - 1, 0));
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, currentEpisode]);
+  const displayedEpisodeTitle = currentEpisode.title
+    .replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '')
+    .trim() || currentEpisode.title;
+  const viewerImageCuts = currentEpisode.cuts.filter(
+    (cut) => typeof cut.img === 'string' && cut.img.trim().length > 0
+  );
 
   const handleSelectWorkAndEpisode = (workId: string, epNum: number) => {
     setSelectedWorkId(workId);
     setSelectedEpisodeNum(epNum);
-    setFullscreenCutIndex(0);
     setActiveTab('viewer');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -808,97 +787,6 @@ export default function WebtoonStudioPage() {
     : [];
 
   const isLoggedIn = Boolean(currentUser || isAdminReview);
-
-  // 컷 렌더링 헬퍼 (일반 뷰어 & 전체화면 리더 공용 스타일)
-  const renderCutVisual = (cut: EpisodeCut, idx: number, isReaderMode = false) => {
-    const hasValidImage = Boolean(cut.img && cut.img.trim().length > 0);
-
-    return (
-      <div
-        key={`${currentWork.id}-${currentEpisode.num}-cut-${idx}`}
-        className={`relative w-full overflow-hidden bg-slate-900 border border-slate-800/80 ${
-          isReaderMode ? 'rounded-xl shadow-2xl' : 'rounded-2xl shadow-lg'
-        }`}
-      >
-        {/* 컷 상단 번호 & 효과음(SFX) 오버레이 */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/90 border-b border-slate-800/80">
-          <span className="text-xs font-semibold tracking-wider text-amber-400/90 uppercase">
-            CUT {String(idx + 1).padStart(2, '0')} /{' '}
-            {String(currentEpisode.cuts?.length || 1).padStart(2, '0')}
-          </span>
-          {cut.sfx && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              <Volume2 className="w-3 h-3 text-indigo-400" />
-              {cut.sfx}
-            </span>
-          )}
-        </div>
-
-        {/* 실제 컷 이미지 영역 */}
-        <div className="relative w-full bg-slate-950 flex items-center justify-center">
-          {hasValidImage ? (
-            <img
-              src={cut.img}
-              alt={`${currentEpisode.num}화 ${idx + 1}컷 - ${cut.scene || ''}`}
-              className={`w-full object-contain select-none ${
-                isReaderMode ? 'max-h-[68vh]' : 'max-h-[640px]'
-              }`}
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full py-16 px-6 flex flex-col items-center justify-center text-center bg-gradient-to-b from-slate-900 to-slate-950">
-              <Layers className="w-9 h-9 text-slate-600 mb-2.5" />
-              <p className="text-xs sm:text-sm text-slate-400">
-                텍스트 연출 컷 ({idx + 1}컷)
-              </p>
-            </div>
-          )}
-
-          {/* 전체화면 확대 버튼 (일반 뷰어일 때만 우측 상단 노출) */}
-          {!isReaderMode && (
-            <button
-              type="button"
-              onClick={() => {
-                setFullscreenCutIndex(idx);
-                setIsFullscreen(true);
-              }}
-              className="absolute top-3 right-3 p-2 rounded-lg bg-slate-950/75 hover:bg-slate-900 text-slate-200 border border-slate-700/70 backdrop-blur-sm transition"
-              title="이 컷부터 전체화면 리더로 보기"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* 장면 설명(scene), 내레이션(narration), 대사(dialogue) 패널 */}
-        <div className="p-4 sm:p-5 space-y-3 bg-gradient-to-b from-slate-900/95 to-slate-950">
-          {cut.scene && (
-            <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-400 leading-relaxed">
-              <span className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium text-[11px]">
-                장면
-              </span>
-              <p>{cut.scene}</p>
-            </div>
-          )}
-
-          {cut.narration && (
-            <div className="p-3.5 rounded-xl bg-amber-500/10 border-l-4 border-amber-400 text-amber-100/95 text-sm sm:text-base italic leading-relaxed">
-              {cut.narration}
-            </div>
-          )}
-
-          {cut.dialogue && (
-            <div className="p-3.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-white text-sm sm:text-base font-medium leading-relaxed shadow-inner">
-              <span className="block text-[11px] font-semibold text-indigo-300 mb-1">
-                대사
-              </span>
-              “{cut.dialogue}”
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
@@ -1351,205 +1239,41 @@ export default function WebtoonStudioPage() {
         {/* ==================== 3. 웹툰 뷰어 탭 ==================== */}
         {activeTab === 'viewer' && (
           <div className="space-y-5">
-            {/* 상단 작품 & 에피소드 컨트롤 바 */}
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-              {/* 작품 전환 셀렉트 (공유 플랫폼 내 여러 작가 작품 전환) */}
-              {works.length > 1 && (
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                  <span className="text-[11px] font-semibold text-slate-400 shrink-0">
-                    작품 선택
-                  </span>
-                  <select
-                    value={currentWork.id}
-                    onChange={(e) => handleSelectWorkAndEpisode(e.target.value, 1)}
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-semibold focus:outline-none focus:border-amber-400"
-                  >
-                    {works.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        《{w.title}》 - {w.authorName} ({w.episodes.length}화)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+            {isCurrentAccessible ? (
+              <>
+                <h1 className="text-lg sm:text-xl font-bold text-white">
+                  제 {currentEpisode.num}화 - {displayedEpisodeTitle}
+                </h1>
 
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-amber-400">
-                      제 {currentEpisode.num}화 / {currentWork.episodes.length}화
-                    </span>
-                    {isAdminLoggedIn ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
-                        관리자 전체 열람
-                      </span>
-                    ) : currentEpisode.num <= 5 ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
-                        무료 공개
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300">
-                        멤버십 전용
-                      </span>
-                    )}
-                  </div>
-                  <h1 className="text-lg sm:text-xl font-bold text-white truncate mt-1">
-                    {currentEpisode.title}
-                  </h1>
+                <div className="w-full max-w-3xl mx-auto">
+                  {viewerImageCuts.map((cut, idx) => (
+                    <img
+                      key={`${currentWork.id}-${currentEpisode.num}-image-${idx}`}
+                      src={cut.img}
+                      alt=""
+                      className="block w-full h-auto"
+                      loading="lazy"
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ))}
                 </div>
 
-                {/* 전체화면 리더 실행 버튼 */}
-                {isCurrentAccessible && currentEpisode.cuts?.length > 0 && (
+                {currentEpisode.num < currentWork.episodes.length && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setFullscreenCutIndex(0);
-                      setIsFullscreen(true);
-                    }}
-                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold transition shadow"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                    전체화면 리더
-                  </button>
-                )}
-              </div>
-
-              {/* 회차 빠른 선택 드롭다운 & 이전/다음 버튼 */}
-              {currentWork.episodes.length > 0 && (
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={currentEpisode.num <= 1}
-                    onClick={() =>
-                      handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num - 1)
-                    }
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 transition"
-                    title="이전 화"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-
-                  <select
-                    value={currentEpisode.num}
-                    onChange={(e) =>
-                      handleSelectWorkAndEpisode(currentWork.id, Number(e.target.value))
-                    }
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-400"
-                  >
-                    {currentWork.episodes.map((ep) => (
-                      <option key={ep.num} value={ep.num}>
-                        제 {ep.num}화 - {ep.title}{' '}
-                        {ep.num <= 5
-                          ? '(무료)'
-                          : canAccessEpisode(currentWork, ep.num)
-                          ? '(열람가능)'
-                          : '(멤버십)'}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    type="button"
-                    disabled={currentEpisode.num >= currentWork.episodes.length}
                     onClick={() =>
                       handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num + 1)
                     }
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 transition"
-                    title="다음 화"
+                    className="mx-auto flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm font-bold transition"
                   >
+                    다음 회차 보기
                     <ChevronRight className="w-4 h-4" />
                   </button>
-                </div>
-              )}
-            </div>
-
-            {/* 본문 컷 렌더링 영역 (잠금 여부에 따라 분기) */}
-            {isCurrentAccessible ? (
-              <div className="space-y-6">
-                {currentEpisode.cuts && currentEpisode.cuts.length > 0 ? (
-                  currentEpisode.cuts.map((cut, idx) => renderCutVisual(cut, idx, false))
-                ) : (
-                  <div className="p-12 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
-                    <p className="text-slate-400 text-sm">
-                      이 회차에 등록된 컷 데이터가 없습니다.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('settings')}
-                      className="px-4 py-2 rounded-xl bg-amber-400 text-slate-950 text-xs font-bold"
-                    >
-                      설정 &gt; 작가 스튜디오에서 회차 업로드하기
-                    </button>
-                  </div>
                 )}
-
-                {/* 에피소드 하단 인터랙션 및 다음 화 이동 */}
-                {currentWork.episodes.length > 0 && (
-                  <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => toggleLike(currentWork.id, currentEpisode.num)}
-                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${
-                          likedEpisodes.includes(`${currentWork.id}-${currentEpisode.num}`)
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                        }`}
-                      >
-                        <Heart
-                          className={`w-4 h-4 ${
-                            likedEpisodes.includes(`${currentWork.id}-${currentEpisode.num}`)
-                              ? 'fill-rose-400 text-rose-400'
-                              : ''
-                          }`}
-                        />
-                        좋아요{' '}
-                        {likedEpisodes.includes(`${currentWork.id}-${currentEpisode.num}`)
-                          ? '완료'
-                          : ''}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard?.writeText(window.location.href);
-                          showToast('작품 링크가 클립보드에 복사되었습니다.');
-                        }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium border border-slate-700 transition"
-                      >
-                        <Share2 className="w-4 h-4" />
-                        공유하기
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                      <button
-                        type="button"
-                        disabled={currentEpisode.num <= 1}
-                        onClick={() =>
-                          handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num - 1)
-                        }
-                        className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-sm font-semibold text-white transition"
-                      >
-                        ← 이전 화
-                      </button>
-                      <button
-                        type="button"
-                        disabled={currentEpisode.num >= currentWork.episodes.length}
-                        onClick={() =>
-                          handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num + 1)
-                        }
-                        className="py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-sm font-bold text-slate-950 transition"
-                      >
-                        다음 화 (
-                        {Math.min(currentEpisode.num + 1, currentWork.episodes.length)}화) →
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              </>
             ) : (
-              /* 6~100화 멤버십 잠금 화면 */
               <div className="p-8 sm:p-10 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 text-center space-y-5">
                 <div className="w-16 h-16 rounded-2xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center mx-auto">
                   <Lock className="w-8 h-8 text-amber-400" />
@@ -1559,24 +1283,23 @@ export default function WebtoonStudioPage() {
                     제 {currentEpisode.num}화는 멤버십 전용 회차입니다
                   </h2>
                   <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
-                    1~5화는 무료로 감상하실 수 있으며, 6화 이후 회차는 멤버십 구독 후 즉시 열람하실 수 있습니다. (구독 수익은 작가 4 : 플랫폼 6으로 배분됩니다)
+                    1~5화는 무료로 감상할 수 있으며, 6화 이후 회차는 멤버십 구독 후 열람할 수 있습니다.
                   </p>
                 </div>
-
                 <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
                   <button
                     type="button"
                     onClick={() => setActiveTab('membership')}
                     className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm transition"
                   >
-                    멤버십으로 전체 회차 열기
+                    멤버십 보기
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab('settings')}
                     className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 transition"
                   >
-                    회원 로그인하기
+                    로그인하기
                   </button>
                 </div>
               </div>
@@ -2424,104 +2147,6 @@ export default function WebtoonStudioPage() {
           </div>
         )}
       </main>
-
-      {/* ==================== 전체화면 리더 모달 ==================== */}
-      {isFullscreen && isCurrentAccessible && currentEpisode.cuts && (
-        <div className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-lg flex flex-col">
-          {/* 전체화면 상단 바 */}
-          <div className="flex items-center justify-between px-4 h-14 border-b border-slate-800 bg-slate-950">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 text-xs font-bold">
-                제 {currentEpisode.num}화
-              </span>
-              <span className="text-sm font-bold text-white truncate">
-                {currentEpisode.title}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(false)}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
-              aria-label="전체화면 닫기"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* 전체화면 중앙 컷 뷰 영역 */}
-          <div className="flex-1 overflow-y-auto px-4 py-5 flex items-center justify-center">
-            <div className="w-full max-w-2xl">
-              {renderCutVisual(
-                currentEpisode.cuts[fullscreenCutIndex] || currentEpisode.cuts[0],
-                fullscreenCutIndex,
-                true
-              )}
-            </div>
-          </div>
-
-          {/* 전체화면 하단 컷 네비게이션 */}
-          <div className="border-t border-slate-800 bg-slate-950 px-4 py-3">
-            <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
-              <button
-                type="button"
-                disabled={fullscreenCutIndex <= 0}
-                onClick={() => setFullscreenCutIndex((prev) => Math.max(prev - 1, 0))}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-35 text-xs sm:text-sm font-semibold text-white flex items-center gap-1 transition"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                이전 컷
-              </button>
-
-              {/* 컷 인디케이터 점 */}
-              <div className="flex items-center gap-1.5">
-                {currentEpisode.cuts.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setFullscreenCutIndex(i)}
-                    className={`h-2 rounded-full transition-all ${
-                      i === fullscreenCutIndex
-                        ? 'w-6 bg-amber-400'
-                        : 'w-2 bg-slate-700 hover:bg-slate-500'
-                    }`}
-                    aria-label={`${i + 1}컷으로 이동`}
-                  />
-                ))}
-              </div>
-
-              {fullscreenCutIndex < currentEpisode.cuts.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFullscreenCutIndex((prev) =>
-                      Math.min(prev + 1, currentEpisode.cuts.length - 1)
-                    )
-                  }
-                  className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-xs sm:text-sm font-bold text-slate-950 flex items-center gap-1 transition"
-                >
-                  다음 컷
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsFullscreen(false);
-                    if (currentEpisode.num < currentWork.episodes.length) {
-                      handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num + 1);
-                    }
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-xs sm:text-sm font-bold text-slate-950 transition"
-                >
-                  {currentEpisode.num < currentWork.episodes.length
-                    ? '다음 화로 →'
-                    : '완결 감상 완료'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ==================== 하단 고정 탭바 (6개 균등 배치: 홈 · 작품관 · 뷰어 · 멤버십 · 커뮤니티 · 설정) ==================== */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800">
