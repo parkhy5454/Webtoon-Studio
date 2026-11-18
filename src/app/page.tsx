@@ -228,6 +228,9 @@ export default function WebtoonStudioPage() {
   const [newWorkCover, setNewWorkCover] = useState<string>('');
 
   const [targetWorkId, setTargetWorkId] = useState<string>('');
+  const [editingEpisodeNum, setEditingEpisodeNum] = useState<number | null>(null);
+  const [isSavingEpisode, setIsSavingEpisode] = useState(false);
+  const episodeSaveLock = useRef(false);
   const [newEpTitle, setNewEpTitle] = useState<string>('');
   const [newEpCuts, setNewEpCuts] = useState<EpisodeCut[]>([
     { img: '', scene: '', narration: '', dialogue: '', sfx: '' },
@@ -821,7 +824,43 @@ export default function WebtoonStudioPage() {
     );
   };
 
-  // 새 회차(에피소드) 업로드 핸들러
+  const resetEpisodeEditor = (workId: string = targetWorkId) => {
+    setTargetWorkId(workId);
+    setEditingEpisodeNum(null);
+    setNewEpTitle('');
+    setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
+    setCutFileError('');
+    setCutPreviewErrors([]);
+    setCutUploadProgress('');
+  };
+
+  const loadEpisodeForEditing = (episodeNumber: number) => {
+    const ownWorks = works.filter((work) => work.authorId === currentUser?.id);
+    const work = ownWorks.find((item) => item.id === targetWorkId) || ownWorks[0];
+    const episode = work?.episodes.find((item) => item.num === episodeNumber);
+    if (!work || !episode) return;
+    setTargetWorkId(work.id);
+    setEditingEpisodeNum(episode.num);
+    setNewEpTitle(episode.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim());
+    setNewEpCuts(episode.cuts.map((cut) => ({ ...cut })));
+    setCutFileError('');
+    setCutPreviewErrors([]);
+    setCutUploadProgress('');
+  };
+
+  const moveEpisodeCut = (index: number, offset: number) => {
+    const destination = index + offset;
+    if (destination < 0 || destination >= newEpCuts.length) return;
+    setNewEpCuts((previous) => {
+      const reordered = [...previous];
+      [reordered[index], reordered[destination]] = [reordered[destination], reordered[index]];
+      return reordered;
+    });
+    setCutPreviewErrors([]);
+  };
+
+  // 새 회차 공개 또는 기존 회차 수정
+
   const handlePublishEpisode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || (currentUser.role !== 'creator' && currentUser.role !== 'admin')) {
@@ -830,11 +869,16 @@ export default function WebtoonStudioPage() {
 
     const myWorks = works.filter((w) => w.authorId === currentUser.id);
     const activeTargetId = targetWorkId || myWorks[0]?.id;
-    const targetWork = works.find((w) => w.id === activeTargetId);
+    const targetWork = myWorks.find((w) => w.id === activeTargetId);
 
     if (!targetWork) {
       showToast('먼저 새 작품을 등록해주세요.');
       setCreatorSubTab('newWork');
+      return;
+    }
+    if (episodeSaveLock.current || isUploadingCutFiles || isCheckingCutImages) return;
+    if (editingEpisodeNum !== null && !targetWork.episodes.some((episode) => episode.num === editingEpisodeNum)) {
+      showToast('수정할 회차를 다시 선택해 주세요.');
       return;
     }
     const cleanEpisodeTitle = newEpTitle.trim().replace(/^제\s*\d+\s*화\s*[-:：–—]?\s*/, '').trim();
@@ -865,6 +909,9 @@ export default function WebtoonStudioPage() {
       return;
     }
 
+    episodeSaveLock.current = true;
+    setIsSavingEpisode(true);
+    try {
     setIsCheckingCutImages(true);
     setCutFileError('모든 컷 이미지를 확인하고 있습니다...');
     setCutPreviewErrors([]);
@@ -891,8 +938,10 @@ export default function WebtoonStudioPage() {
     setCutFileError('');
 
     const validCuts = activeCuts.map(({ cut }) => cut);
-    const nextNum = targetWork.episodes.length + 1;
+    const nextNum = editingEpisodeNum ?? Math.max(0, ...targetWork.episodes.map((episode) => episode.num)) + 1;
+    const existingEpisode = targetWork.episodes.find((episode) => episode.num === editingEpisodeNum);
     const newEpisode: Episode = {
+      ...existingEpisode,
       num: nextNum,
       title: cleanEpisodeTitle,
       cuts: validCuts,
@@ -903,7 +952,9 @@ export default function WebtoonStudioPage() {
       return {
         ...w,
         coverImg: w.coverImg || validCuts[0]?.img || '',
-        episodes: [...w.episodes, newEpisode],
+        episodes: editingEpisodeNum !== null
+          ? w.episodes.map((episode) => episode.num === editingEpisodeNum ? newEpisode : episode)
+          : [...w.episodes, newEpisode],
       };
     });
 
@@ -911,8 +962,14 @@ export default function WebtoonStudioPage() {
     if (!saved) return;
     setNewEpTitle('');
     setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
-    showToast(`《${targetWork.title}》 제 ${nextNum}화가 공개되었습니다!`);
+    showToast(`《${targetWork.title}》 제 ${nextNum}화가 ${editingEpisodeNum !== null ? '수정되었습니다' : '공개되었습니다'}!`);
+    setEditingEpisodeNum(null);
+    setCutPreviewErrors([]);
     handleSelectWorkAndEpisode(targetWork.id, nextNum);
+    } finally {
+      episodeSaveLock.current = false;
+      setIsSavingEpisode(false);
+    }
   };
 
   const handleSubscribe = (planName: string) => {
@@ -2006,9 +2063,10 @@ export default function WebtoonStudioPage() {
                           onSubmit={handlePublishEpisode}
                           className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-4"
                         >
+                          <fieldset disabled={isUploadingCutFiles || isSavingEpisode} className="space-y-4 disabled:opacity-70">
                           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                             <Upload className="w-4 h-4 text-amber-400" />
-                            새 회차 원고 & 컷 업로드
+                            회차 등록 및 수정
                           </h3>
 
                           {myWorksList.length === 0 ? (
@@ -2033,7 +2091,7 @@ export default function WebtoonStudioPage() {
                                   </label>
                                   <select
                                     value={targetWorkId || myWorksList[0]?.id}
-                                    onChange={(e) => setTargetWorkId(e.target.value)}
+                                    onChange={(e) => resetEpisodeEditor(e.target.value)}
                                     className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
                                   >
                                     {myWorksList.map((w) => (
@@ -2055,6 +2113,29 @@ export default function WebtoonStudioPage() {
                                     className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                                   />
                                 </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="block text-xs text-slate-300">등록 또는 수정할 회차</label>
+                                <select
+                                  value={editingEpisodeNum ?? 'new'}
+                                  onChange={(event) => event.target.value === 'new'
+                                    ? resetEpisodeEditor()
+                                    : loadEpisodeForEditing(Number(event.target.value))}
+                                  className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white"
+                                >
+                                  <option value="new">새 회차 등록</option>
+                                  {(myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes.map((episode) => (
+                                    <option key={episode.num} value={episode.num}>
+                                      제 {episode.num}화 - {episode.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim()} 수정
+                                    </option>
+                                  ))}
+                                </select>
+                                {editingEpisodeNum !== null && (
+                                  <p className="text-xs text-amber-300">
+                                    제 {editingEpisodeNum}화 수정 중 · 추가 이미지는 기존 컷 뒤에 이어집니다. 저장하면 같은 회차에 반영됩니다.
+                                  </p>
+                                )}
                               </div>
 
                               <div
@@ -2132,6 +2213,14 @@ export default function WebtoonStudioPage() {
                                       <span className="text-xs font-bold text-indigo-300">
                                         CUT #{idx + 1}
                                       </span>
+                                      <div className="flex items-center gap-2">
+                                        <button type="button" disabled={idx === 0}
+                                          onClick={() => moveEpisodeCut(idx, -1)}
+                                          className="text-xs text-slate-300 disabled:opacity-30">위로</button>
+                                        <button type="button" disabled={idx === newEpCuts.length - 1}
+                                          onClick={() => moveEpisodeCut(idx, 1)}
+                                          className="text-xs text-slate-300 disabled:opacity-30">아래로</button>
+                                      </div>
                                       {newEpCuts.length > 1 && (
                                         <button
                                           type="button"
@@ -2229,14 +2318,15 @@ export default function WebtoonStudioPage() {
 
                               <button
                                 type="submit"
-                                disabled={isUploadingCutFiles || isCheckingCutImages}
+                                disabled={isUploadingCutFiles || isCheckingCutImages || isSavingEpisode}
                                 className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-extrabold text-sm transition flex items-center justify-center gap-1.5"
                               >
                                 <Upload className="w-4 h-4" />
-                                {isCheckingCutImages ? '이미지 확인 중...' : '회차 업로드 및 즉시 공개하기'}
+                                {isSavingEpisode ? '이미지 확인·저장 중...' : editingEpisodeNum !== null ? '회차 수정 저장하기' : '회차 업로드 및 즉시 공개하기'}
                               </button>
                             </>
                           )}
+                          </fieldset>
                         </form>
                       )}
 
