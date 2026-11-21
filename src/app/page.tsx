@@ -814,6 +814,20 @@ export default function WebtoonStudioPage() {
     ]);
   };
 
+  const handleClearAllCuts = () => {
+    if (isUploadingCutFiles || isSavingEpisode || isCheckingCutImages) return;
+    const confirmed = window.confirm(
+      '편집 중인 모든 컷을 삭제할까요? 공개된 회차는 수정 저장 전까지 유지됩니다. 새 이미지를 올린 후 저장해 주세요.'
+    );
+    if (!confirmed) return;
+    setNewEpCuts([]);
+    setCutPreviewErrors([]);
+    setCutFileError('');
+    setCutUploadProgress('');
+    if (cutFileInputRef.current) cutFileInputRef.current.value = '';
+    showToast('전체 컷을 비웠습니다. 새 이미지를 올린 후 저장해 주세요.');
+  };
+
   const handleRemoveCutSlot = (index: number) => {
     if (newEpCuts.length <= 1) return;
     setNewEpCuts((prev) => prev.filter((_, idx) => idx !== index));
@@ -2194,6 +2208,16 @@ export default function WebtoonStudioPage() {
                                   <span className="text-xs font-semibold text-amber-300">
                                     컷 구성 ({newEpCuts.length}컷)
                                   </span>
+                                  <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={handleClearAllCuts}
+                                    disabled={newEpCuts.length === 0 || isUploadingCutFiles || isSavingEpisode}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 text-xs text-rose-300 border border-rose-500/30"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    전체 컷 삭제
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={handleAddCutSlot}
@@ -2202,7 +2226,13 @@ export default function WebtoonStudioPage() {
                                     <PlusCircle className="w-3.5 h-3.5 text-amber-400" />
                                     컷 추가
                                   </button>
+                                  </div>
                                 </div>
+                                {newEpCuts.length === 0 && (
+                                  <p className="rounded-xl border border-dashed border-slate-700 p-5 text-center text-xs text-slate-400">
+                                    등록된 컷이 없습니다. 이미지 파일을 올리거나 컷을 추가해 주세요.
+                                  </p>
+                                )}
 
                                 {newEpCuts.map((cut, idx) => (
                                   <div
