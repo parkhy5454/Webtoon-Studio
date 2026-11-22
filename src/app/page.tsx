@@ -197,6 +197,9 @@ export default function WebtoonStudioPage() {
   const [works, setWorks] = useState<WebtoonWork[]>(INITIAL_WORKS);
   const [selectedWorkId, setSelectedWorkId] = useState<string>('work-dalbit');
   const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
+  const [readerDirection, setReaderDirection] = useState<'vertical' | 'horizontal'>('vertical');
+  const [readerCutIndex, setReaderCutIndex] = useState(0);
+  const readerTouchStart = useRef<{ x: number; y: number } | null>(null);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogGenre, setCatalogGenre] = useState('all');
   const [catalogSort, setCatalogSort] = useState<'latest' | 'popular'>('latest');
@@ -461,6 +464,31 @@ export default function WebtoonStudioPage() {
   const viewerImageCuts = currentEpisode.cuts.filter(
     (cut) => typeof cut.img === 'string' && cut.img.trim().length > 0
   );
+
+  const activeReaderCut = Math.min(readerCutIndex, Math.max(0, viewerImageCuts.length - 1));
+
+  useEffect(() => {
+    setReaderCutIndex(0);
+    readerTouchStart.current = null;
+  }, [selectedWorkId, selectedEpisodeNum]);
+
+  useEffect(() => {
+    if (activeTab !== 'viewer' || readerDirection !== 'horizontal' || !isCurrentAccessible) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const element = event.target as HTMLElement | null;
+      if (element?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setReaderCutIndex((previous) => Math.min(previous + 1, Math.max(0, viewerImageCuts.length - 1)));
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setReaderCutIndex((previous) => Math.max(0, previous - 1));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeTab, readerDirection, isCurrentAccessible, viewerImageCuts.length]);
 
   const handleSelectWorkAndEpisode = (workId: string, epNum: number) => {
     setSelectedWorkId(workId);
@@ -1537,20 +1565,91 @@ export default function WebtoonStudioPage() {
                   제 {currentEpisode.num}화 - {displayedEpisodeTitle}
                 </h1>
 
-                <div className="w-full max-w-3xl mx-auto">
-                  {viewerImageCuts.map((cut, idx) => (
-                    <img
-                      key={`${currentWork.id}-${currentEpisode.num}-image-${idx}`}
-                      src={cut.img}
-                      alt=""
-                      className="block w-full h-auto"
-                      loading="lazy"
-                      onError={(event) => {
-                        event.currentTarget.style.display = 'none';
+                <div className="flex gap-2" role="group" aria-label="웹툰 보기 방향">
+                  {([
+                    ['vertical', '위/아래 보기'],
+                    ['horizontal', '좌/우 넘기기'],
+                  ] as const).map(([direction, label]) => (
+                    <button
+                      key={direction}
+                      type="button"
+                      aria-pressed={readerDirection === direction}
+                      onClick={() => {
+                        setReaderDirection(direction);
+                        readerTouchStart.current = null;
                       }}
-                    />
+                      className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${
+                        readerDirection === direction
+                          ? 'bg-amber-400 border-amber-400 text-slate-950'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >{label}</button>
                   ))}
                 </div>
+
+                {readerDirection === 'vertical' ? (
+                  <div className="w-full max-w-3xl mx-auto">
+                    {viewerImageCuts.map((cut, idx) => (
+                      <img
+                        key={`${currentWork.id}-${currentEpisode.num}-image-${idx}`}
+                        src={cut.img}
+                        alt=""
+                        className="block w-full h-auto"
+                        loading="lazy"
+                        onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                      />
+                    ))}
+                  </div>
+                ) : viewerImageCuts.length > 0 ? (
+                  <div className="w-full max-w-3xl mx-auto space-y-3">
+                    <div
+                      className="w-full min-h-[40vh] flex justify-center items-start"
+                      style={{ touchAction: 'pan-y pinch-zoom' }}
+                      onTouchStart={(event) => {
+                        if (event.touches.length !== 1) { readerTouchStart.current = null; return; }
+                        const touch = event.touches[0];
+                        readerTouchStart.current = { x: touch.clientX, y: touch.clientY };
+                      }}
+                      onTouchCancel={() => { readerTouchStart.current = null; }}
+                      onTouchEnd={(event) => {
+                        const start = readerTouchStart.current;
+                        readerTouchStart.current = null;
+                        if (!start || event.changedTouches.length !== 1) return;
+                        const touch = event.changedTouches[0];
+                        const dx = touch.clientX - start.x;
+                        const dy = touch.clientY - start.y;
+                        if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy) * 1.3) return;
+                        setReaderCutIndex(Math.min(
+                          Math.max(0, activeReaderCut + (dx < 0 ? 1 : -1)),
+                          viewerImageCuts.length - 1
+                        ));
+                      }}
+                    >
+                      <img
+                        key={`${currentWork.id}-${currentEpisode.num}-horizontal-${activeReaderCut}`}
+                        src={viewerImageCuts[activeReaderCut].img}
+                        alt={`제 ${currentEpisode.num}화 ${activeReaderCut + 1}번째 이미지`}
+                        draggable={false}
+                        className="block w-full h-auto select-none"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <button type="button" disabled={activeReaderCut === 0}
+                        onClick={() => setReaderCutIndex(Math.max(0, activeReaderCut - 1))}
+                        className="px-4 py-2 rounded-lg bg-slate-800 text-sm text-white disabled:opacity-30"
+                        aria-label="이전 컷">← 이전 컷</button>
+                      <span className="text-xs text-slate-400" aria-live="polite">
+                        {activeReaderCut + 1} / {viewerImageCuts.length}
+                      </span>
+                      <button type="button" disabled={activeReaderCut >= viewerImageCuts.length - 1}
+                        onClick={() => setReaderCutIndex(Math.min(viewerImageCuts.length - 1, activeReaderCut + 1))}
+                        className="px-4 py-2 rounded-lg bg-slate-800 text-sm text-white disabled:opacity-30"
+                        aria-label="다음 컷">다음 컷 →</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="py-10 text-center text-sm text-slate-400">등록된 이미지가 없습니다.</p>
+                )}
 
                 {currentEpisode.num < currentWork.episodes.length && (
                   <button
