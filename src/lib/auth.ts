@@ -55,6 +55,11 @@ export async function ensureAuthSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS webtoon_hidden_works (
+      work_id TEXT PRIMARY KEY REFERENCES webtoon_creator_works(id) ON DELETE CASCADE
+    )
+  `;
   await sql`CREATE INDEX IF NOT EXISTS webtoon_creator_works_author_idx ON webtoon_creator_works(author_id)`;
 }
 

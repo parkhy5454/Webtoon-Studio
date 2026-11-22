@@ -42,6 +42,7 @@ interface EpisodeCut {
 }
 
 interface Episode {
+  releaseAt?: number;
   num: number;
   title: string;
   cuts: EpisodeCut[];
@@ -69,11 +70,18 @@ interface UserAccount {
   joinedAt: string;
 }
 
-interface LibraryEntry { workId: string; saved: boolean; episode: number | null; }
+interface LibraryEntry { workId: string; saved: boolean; episode: number | null; cut: number; updatedAt: string; savedAt?: string; }
 interface SettlementReport { workId: string; referralLimit: number; referralUses: number; paidReaders: number; pendingFees: number; creatorShare: string; }
 interface WorkStats { workId: string; firstReaders: number; secondReaders: number; saves: number; }
 
+interface ModerationReport { id: string; kind: 'work' | 'comment'; target: string; reason: string; status: string; preview?: string; history: { action: string; at: string }[]; }
+
 interface WebtoonWork {
+  createdAt?: string;
+  updatedAt?: string;
+  latestRelease?: number;
+  popularity?: number;
+  completed?: boolean;
   id: string;
   title: string;
   authorName: string;
@@ -279,6 +287,12 @@ export default function WebtoonStudioPage() {
   const readerTouchStart = useRef<{ x: number; y: number } | null>(null);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogGenre, setCatalogGenre] = useState('all');
+  const [discoveryFilter, setDiscoveryFilter] = useState('all');
+  const [publishMode, setPublishMode] = useState('now');
+  const [publishDate, setPublishDate] = useState('');
+  const [reports, setReports] = useState<ModerationReport[]>([]);
+  const [reportTarget, setReportTarget] = useState<{ kind: 'work' | 'comment'; id: string } | null>(null);
+  const [reportReason, setReportReason] = useState('');
   const [catalogSort, setCatalogSort] = useState<CatalogSort>('latest');
   const [catalogWorkId, setCatalogWorkId] = useState<string | null>(null);
 
@@ -524,15 +538,11 @@ export default function WebtoonStudioPage() {
         const data = await response.json();
         if (!Array.isArray(data.works) || cancelled) return;
         const incoming = data.works as WebtoonWork[];
-        setWorks((previous) => {
-          const merged = new Map<string, WebtoonWork>();
-          [...previous, ...incoming].filter(isCatalogWork).forEach((work) => merged.set(work.id, work));
-          return Array.from(merged.values());
-        });
+        setWorks(incoming.filter(isCatalogWork));
       } catch { /* Keep the existing catalog available while offline. */ }
     };
     void refreshWorks();
-    if (activeTab !== 'works') return () => { cancelled = true; };
+    if (activeTab !== 'works' && activeTab !== 'home' && activeTab !== 'viewer') return () => { cancelled = true; };
     const interval = window.setInterval(() => { void refreshWorks(); }, 30000);
     const onFocus = () => { void refreshWorks(); };
     window.addEventListener('focus', onFocus);
@@ -617,22 +627,53 @@ export default function WebtoonStudioPage() {
 
   const readingWorkId = currentWork.id;
   const readingEpisode = currentEpisode.num;
-  const hasReadingContent = currentEpisode.cuts.length > 0;
+  const [verticalCut, setVerticalCut] = useState(0);
+  const readingCutCount = currentEpisode.cuts.length;
+  const hasReadingContent = readingCutCount > 0;
   useEffect(() => {
     if (!libraryUserId || activeTab !== 'viewer' || !isCurrentAccessible || !hasReadingContent) return;
     const controller = new AbortController();
-    void fetch('/api/library', {
-      signal: controller.signal,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workId: readingWorkId, episode: readingEpisode }),
-    }).then(async (response) => {
-      if (!response.ok) return;
-      const { entry } = await response.json();
-      if (!controller.signal.aborted) setLibrary((items) => [entry, ...items.filter((item) => item.workId !== entry.workId)]);
-    }).catch(() => undefined);
-    return () => controller.abort();
-  }, [libraryUserId, activeTab, isCurrentAccessible, hasReadingContent, readingWorkId, readingEpisode]);
+    const body = JSON.stringify({
+      workId: readingWorkId, episode: readingEpisode,
+      cut: Math.min(readingCutCount - 1, readerDirection === 'vertical' ? verticalCut : readerCutIndex),
+    });
+    const timer = window.setTimeout(() => {
+      void fetch('/api/library', {
+        signal: controller.signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      }).then(async (response) => {
+        if (!response.ok) return;
+        const { entry } = await response.json();
+        if (!controller.signal.aborted) setLibrary((items) => [entry, ...items.filter((item) => item.workId !== entry.workId)]);
+      }).catch(() => undefined);
+    }, 350);
+    const saveOnExit = () => {
+      window.clearTimeout(timer);
+      void fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true })
+        .catch(() => undefined);
+    };
+    window.addEventListener('pagehide', saveOnExit);
+    return () => { window.clearTimeout(timer); controller.abort(); window.removeEventListener('pagehide', saveOnExit); };
+  }, [libraryUserId, activeTab, isCurrentAccessible, hasReadingContent, readingWorkId, readingEpisode, readerDirection, verticalCut, readerCutIndex, readingCutCount]);
+
+  useEffect(() => {
+    if (activeTab !== 'viewer' || readerDirection !== 'vertical' || !hasReadingContent) return;
+    const cuts = Array.from(document.querySelectorAll<HTMLElement>('[data-reader-cut]'));
+    const update = () => {
+      let closest = 0;
+      let distance = Infinity;
+      cuts.forEach((cut, index) => {
+        const box = cut.getBoundingClientRect();
+        if (!box.height) return;
+        const center = window.innerHeight * 0.48;
+        const delta = Math.max(box.top - center, center - box.bottom, 0);
+        if (delta < distance) { closest = index; distance = delta; }
+      });
+      setVerticalCut(closest);
+    };
+    const frame = requestAnimationFrame(update);
+    window.addEventListener('scroll', update, { passive: true });
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', update); };
+  }, [activeTab, readerDirection, readingWorkId, readingEpisode, hasReadingContent]);
   const displayedEpisodeTitle = currentEpisode.title
     .replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '')
     .trim() || currentEpisode.title;
@@ -660,7 +701,6 @@ export default function WebtoonStudioPage() {
   }, [activeTab, readerDirection, isCurrentAccessible, nextReaderSrc, previousReaderSrc]);
 
   useEffect(() => {
-    setReaderCutIndex(0);
     readerTouchStart.current = null;
   }, [selectedWorkId, selectedEpisodeNum]);
 
@@ -843,10 +883,13 @@ export default function WebtoonStudioPage() {
     }
   };
 
-  const handleSelectWorkAndEpisode = (workId: string, epNum: number) => {
+  const handleSelectWorkAndEpisode = (workId: string, epNum: number, cut = 0) => {
+    const resume = cut > 0;
+    if (resume) setReaderDirection('horizontal');
+    setVerticalCut(resume ? cut : 0);
     setSelectedWorkId(workId);
     setSelectedEpisodeNum(epNum);
-    setReaderCutIndex(0);
+    setReaderCutIndex(cut);
     setActiveTab('viewer');
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
   };
@@ -1180,6 +1223,8 @@ export default function WebtoonStudioPage() {
   const resetEpisodeEditor = (workId: string = targetWorkId) => {
     setTargetWorkId(workId);
     setEditingEpisodeNum(null);
+    setPublishMode('now');
+    setPublishDate('');
     setNewEpTitle('');
     setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
     setCutFileError('');
@@ -1219,6 +1264,9 @@ export default function WebtoonStudioPage() {
     if (!work || !episode) return;
     setTargetWorkId(work.id);
     setEditingEpisodeNum(episode.num);
+    setPublishMode(episode.releaseAt === 0 ? 'draft' : (episode.releaseAt ?? 0) > Date.now() ? 'scheduled' : 'now');
+    const date = new Date(episode.releaseAt || Date.now());
+    setPublishDate(new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
     setNewEpTitle(episode.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim());
     setNewEpCuts(episode.cuts.map((cut) => ({ ...cut })));
     setCutFileError('');
@@ -1275,12 +1323,12 @@ export default function WebtoonStudioPage() {
         (cut.sfx || '').trim()
       );
 
-    if (activeCuts.length === 0) {
+    if (publishMode !== 'draft' && activeCuts.length === 0) {
       showToast('회차 이미지를 한 장 이상 업로드해 주세요.');
       return;
     }
     const missingImage = activeCuts.find(({ cut }) => !(cut.img || '').trim());
-    if (missingImage) {
+    if (publishMode !== 'draft' && missingImage) {
       const message = `${missingImage.index + 1}번째 컷 이미지가 없습니다. 모든 컷에 이미지를 넣어주세요.`;
       setCutFileError(message);
       showToast(message);
@@ -1302,7 +1350,7 @@ export default function WebtoonStudioPage() {
           if (!results[batchIndex]) failedIndexes.push(index);
         });
       }
-      if (failedIndexes.length > 0) {
+      if (publishMode !== 'draft' && failedIndexes.length > 0) {
         setCutPreviewErrors(failedIndexes);
         const failedList = failedIndexes.map((index) => index + 1).join(', ');
         const message = `${failedList}번 컷 이미지가 열리지 않습니다. 파일을 다시 올리거나 주소를 확인해 주세요.`;
@@ -1318,8 +1366,16 @@ export default function WebtoonStudioPage() {
     const validCuts = activeCuts.map(({ cut }) => cut);
     const nextNum = editingEpisodeNum ?? Math.max(0, ...targetWork.episodes.map((episode) => episode.num)) + 1;
     const existingEpisode = targetWork.episodes.find((episode) => episode.num === editingEpisodeNum);
+    const releaseAt = publishMode === 'draft' ? 0 : publishMode === 'scheduled'
+      ? new Date(publishDate).getTime()
+      : existingEpisode?.releaseAt && existingEpisode.releaseAt <= Date.now() ? existingEpisode.releaseAt : Date.now();
+    if (publishMode === 'scheduled' && (!Number.isFinite(releaseAt) || releaseAt <= Date.now())) {
+      showToast('현재보다 이후인 공개 일시를 선택해 주세요.');
+      return;
+    }
     const newEpisode: Episode = {
       ...existingEpisode,
+      releaseAt,
       num: nextNum,
       title: cleanEpisodeTitle,
       cuts: validCuts,
@@ -1329,7 +1385,7 @@ export default function WebtoonStudioPage() {
       if (w.id !== targetWork.id) return w;
       return {
         ...w,
-        coverImg: w.coverImg || validCuts[0]?.img || '',
+        coverImg: w.coverImg || (publishMode === 'now' ? validCuts[0]?.img : '') || '',
         episodes: editingEpisodeNum !== null
           ? w.episodes.map((episode) => episode.num === editingEpisodeNum ? newEpisode : episode)
           : [...w.episodes, newEpisode],
@@ -1340,10 +1396,13 @@ export default function WebtoonStudioPage() {
     if (!saved) return;
     setNewEpTitle('');
     setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
-    showToast(`《${targetWork.title}》 제 ${nextNum}화가 ${editingEpisodeNum !== null ? '수정되었습니다' : '공개되었습니다'}!`);
+    if (publishMode === 'now') showToast(`《${targetWork.title}》 제 ${nextNum}화가 ${editingEpisodeNum !== null ? '수정되었습니다' : '공개되었습니다'}!`);
     setEditingEpisodeNum(null);
     setCutPreviewErrors([]);
-    handleSelectWorkAndEpisode(targetWork.id, nextNum);
+    if (publishMode === 'now') handleSelectWorkAndEpisode(targetWork.id, nextNum);
+    else showToast(publishMode === 'draft' ? '회차를 비공개로 임시저장했습니다.' : '회차 공개를 예약했습니다.');
+    setPublishMode('now');
+    setPublishDate('');
     } finally {
       episodeSaveLock.current = false;
       setIsSavingEpisode(false);
@@ -1357,29 +1416,44 @@ export default function WebtoonStudioPage() {
     );
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
-    if (currentWork.episodes.length === 0) { e.preventDefault(); return; }
-    e.preventDefault();
-    if (!newComment.trim()) return;
-    const authorLabel = currentUser
-      ? currentUser.role === 'admin'
-        ? `${currentUser.displayName} (관리자)`
-        : currentUser.role === 'creator'
-        ? `${currentUser.displayName} (작가)`
-        : currentUser.displayName
-      : '비회원_독자';
+  const loadDiscussion = async (workId: string, signal?: AbortSignal) => {
+    const response = await fetch('/api/moderation?work=' + encodeURIComponent(workId), { signal });
+    if (response.ok && !signal?.aborted) setComments((await response.json()).comments);
+  };
+  useEffect(() => {
+    setComments([]);
+    if (activeTab !== 'community' || !currentWork.id) return;
+    const controller = new AbortController();
+    void loadDiscussion(currentWork.id, controller.signal).catch(() => undefined);
+    return () => controller.abort();
+  }, [activeTab, currentWork.id]);
 
-    const item: CommentItem = {
-      id: `c-${Date.now()}`,
-      author: authorLabel,
-      episode: currentEpisode.num,
-      content: newComment.trim(),
-      likes: 1,
-      createdAt: '방금 전',
-    };
-    setComments([item, ...comments]);
-    setNewComment('');
-    showToast('댓글이 등록되었습니다.');
+  const submitModeration = async (body: object) => {
+    try {
+      const response = await fetch('/api/moderation', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (response.ok) return true;
+      const data = await response.json();
+      showToast(data.error || (response.status === 409 ? '이미 신고했거나 대상이 없습니다.' : '요청을 처리하지 못했습니다.'));
+    } catch { showToast('요청을 처리하지 못했습니다.'); }
+    return false;
+  };
+
+  const handleAddComment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newComment.trim() || !currentWork.id || !currentWork.episodes.length) return;
+    if (await submitModeration({ action: 'comment', target: currentWork.id, content: newComment, episode: currentEpisode.num })) {
+      setNewComment('');
+      void loadDiscussion(currentWork.id).catch(() => undefined);
+    }
+  };
+  const loadReports = async () => {
+    try {
+      const response = await fetch('/api/moderation?queue=1');
+      if (response.ok) setReports((await response.json()).reports);
+      else showToast('신고 목록을 가져오지 못했습니다.');
+    } catch { showToast('신고 목록을 가져오지 못했습니다.'); }
   };
 
   const myWorksList = currentUser
@@ -1387,6 +1461,18 @@ export default function WebtoonStudioPage() {
     : [];
 
   const genreWork = myWorksList.find((work) => work.id === genreWorkId);
+
+  const setWorkCompletion = async (work: WebtoonWork) => {
+    try {
+      const response = await fetch('/api/creator/works', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: work.id, completed: !work.completed }),
+      });
+      if (!response.ok) throw new Error();
+      setWorks((items) => items.map((item) => item.id === work.id ? { ...item, completed: !work.completed } : item));
+      showToast('작품 상태를 저장했습니다.');
+    } catch { showToast('작품 상태를 저장하지 못했습니다.'); }
+  };
 
   const saveWorkGenre = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -1417,18 +1503,33 @@ export default function WebtoonStudioPage() {
     works.flatMap((work) => getWorkGenres(work.genre))
   )).sort((a, b) => a.localeCompare(b, 'ko'));
   const catalogWorks = works.filter((work) => {
+    if (discoveryFilter === 'completed' && !work.completed) return false;
+    if (discoveryFilter === 'new' && Date.now() - (Date.parse(work.createdAt ?? '') || 0) > 7 * 86400000) return false;
+    if (discoveryFilter === 'updated' && Date.now() - (work.latestRelease || Date.parse(work.updatedAt ?? '') || 0) > 7 * 86400000) return false;
     if (savedOnly && !library.some((entry) => entry.workId === work.id && entry.saved)) return false;
     const query = catalogQuery.trim().toLocaleLowerCase();
     return (!query || [work.title, work.authorName, work.genre, work.synopsis]
       .some((value) => value.toLocaleLowerCase().includes(query))) &&
       (catalogGenre === 'all' || getWorkGenres(work.genre).includes(catalogGenre));
   }).sort((a, b) => {
-    if (catalogSort === 'popular') return (b.subscribers || 0) - (a.subscribers || 0);
+    if (catalogSort === 'popular') return (b.popularity || 0) - (a.popularity || 0);
+    if (discoveryFilter === 'updated' && catalogSort === 'latest') {
+      return (b.latestRelease || Date.parse(b.updatedAt ?? '') || 0) -
+        (a.latestRelease || Date.parse(a.updatedAt ?? '') || 0);
+    }
     if (catalogSort === 'title-asc') return a.title.localeCompare(b.title, 'ko', { numeric: true });
     if (catalogSort === 'title-desc') return b.title.localeCompare(a.title, 'ko', { numeric: true });
     const aRegistered = Number(a.id.match(/^work-(\d+)$/)?.[1] || 0);
     const bRegistered = Number(b.id.match(/^work-(\d+)$/)?.[1] || 0);
     return bRegistered - aRegistered || works.indexOf(b) - works.indexOf(a);
+  });
+  const recentReads = library.filter((entry) => entry.episode !== null && works.some((work) =>
+    work.id === entry.workId && work.episodes.some((episode) => episode.num === entry.episode))).slice(0, 5);
+  const newSavedEpisodes = library.filter((entry) => entry.saved).flatMap((entry) => {
+    const work = works.find((item) => item.id === entry.workId);
+    const episode = work?.episodes.filter((ep) => ep.releaseAt !== 0 && (ep.releaseAt ?? 0) <= Date.now())
+      .reduce<Episode | undefined>((latest, ep) => !latest || ep.num > latest.num ? ep : latest, undefined);
+    return work && episode && episode.num > (entry.episode ?? 0) && (!entry.savedAt || !episode.releaseAt || episode.releaseAt > Date.parse(entry.savedAt)) ? [{ work, episode }] : [];
   });
   const catalogSelectedWork = works.find((work) => work.id === catalogWorkId);
 
@@ -1528,9 +1629,37 @@ export default function WebtoonStudioPage() {
 
       {/* 메인 콘텐츠 영역 */}
       <main className="max-w-3xl mx-auto px-4 pt-5">
+        {reportTarget && <form className="mb-4 space-y-2 rounded-xl border border-slate-700 p-4" onSubmit={async (event) => {
+          event.preventDefault();
+          if (await submitModeration({ action: 'report', target: reportTarget.id, kind: reportTarget.kind, content: reportReason })) {
+            setReportTarget(null); showToast('신고가 접수되었습니다.');
+          }
+        }}>
+          <label className="block text-sm">신고 사유
+            <select required value={reportReason} onChange={(event) => setReportReason(event.target.value)} className="block w-full rounded-lg bg-slate-900 p-2">
+              <option value="">사유 선택</option>
+              <option>스팸 또는 광고</option><option>욕설 또는 괴롭힘</option>
+              <option>저작권 침해</option><option>부적절한 콘텐츠</option><option>기타</option>
+            </select>
+          </label>
+          <button className="mr-4 text-amber-300">신고 제출</button>
+          <button type="button" onClick={() => setReportTarget(null)}>취소</button>
+        </form>}
         {/* ==================== 1. 홈 탭 (이 앱이 어떤 서비스인지 소개하는 메인 랜딩) ==================== */}
         {activeTab === 'home' && (
           <div className="space-y-6">
+            {recentReads.length > 0 && <section className="space-y-2 rounded-xl border border-slate-800 p-4">
+              <h2 className="font-bold">최근 본 작품 이어보기</h2>
+              {recentReads.map((entry) => <button key={entry.workId} type="button" className="block text-left text-sm text-amber-300"
+                onClick={() => handleSelectWorkAndEpisode(entry.workId, entry.episode ?? 1, entry.cut)}>
+                  {works.find((work) => work.id === entry.workId)?.title} · {entry.episode}화 {entry.cut + 1}컷
+              </button>)}
+            </section>}
+            {newSavedEpisodes.length > 0 && <section className="space-y-2 rounded-xl border border-slate-800 p-4">
+              <h2 className="font-bold">관심 작품 새 회차</h2>
+              {newSavedEpisodes.map(({ work, episode }) => <button key={work.id} type="button" className="block text-left text-sm text-amber-300"
+                onClick={() => handleSelectWorkAndEpisode(work.id, episode.num)}>{work.title} · {episode.num}화 <span>NEW</span></button>)}
+            </section>}
             {/* 히어로 브랜드 소개 배너 */}
             <div className="relative rounded-3xl overflow-hidden border border-indigo-500/30 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-6 sm:p-9 shadow-2xl">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 text-amber-300 text-xs font-bold border border-amber-400/30 mb-4">
@@ -1700,6 +1829,14 @@ export default function WebtoonStudioPage() {
                     <option value="all">전체 장르</option>
                     {catalogGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
                   </select>
+                  <select aria-label="작품 유형" value={discoveryFilter}
+                    onChange={(event) => { setDiscoveryFilter(event.target.value); if (event.target.value === 'updated') setCatalogSort('latest'); }}
+                    className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white">
+                    <option value="all">모든 작품</option>
+                    <option value="updated">최근 업데이트</option>
+                    <option value="new">최근 7일 신작</option>
+                    <option value="completed">완결작</option>
+                  </select>
                   <select aria-label="작품 정렬" value={catalogSort}
                     onChange={(event) => setCatalogSort(event.target.value as CatalogSort)}
                     className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white">
@@ -1769,6 +1906,7 @@ export default function WebtoonStudioPage() {
                         </div>
                         <h3 className="text-sm sm:text-base font-bold text-white truncate mt-1">
                           {work.title}
+                          {newSavedEpisodes.some((item) => item.work.id === work.id) && <span className="ml-2 text-xs text-amber-300">NEW</span>}
                         </h3>
                         <p className="text-xs text-slate-400 mt-0.5">
                           글/그림 · {work.authorName}
@@ -1833,6 +1971,9 @@ export default function WebtoonStudioPage() {
                 className="w-full rounded-xl border border-slate-700 py-2.5 text-sm font-bold text-slate-100">
                 작품 공유
               </button>
+              {libraryUserId && <button type="button" className="text-xs text-slate-300" onClick={() => {
+                setReportReason(''); setReportTarget({ kind: 'work', id: catalogSelectedWork.id });
+              }}>작품 신고</button>}
               {libraryUserId && <button type="button" className="w-full rounded-xl border border-slate-700 py-2 text-sm"
                 onClick={async () => {
                   const workId = catalogSelectedWork.id;
@@ -1854,7 +1995,7 @@ export default function WebtoonStudioPage() {
               {library.filter((entry) => entry.workId === catalogSelectedWork.id && entry.episode !== null).map((entry) =>
                 catalogSelectedWork.episodes.some((episode) => episode.num === entry.episode) &&
                 <button key={entry.workId} type="button" className="w-full rounded-xl border border-amber-400 py-2 text-sm text-amber-300"
-                  onClick={() => handleSelectWorkAndEpisode(entry.workId, entry.episode ?? 1)}>
+                  onClick={() => handleSelectWorkAndEpisode(entry.workId, entry.episode ?? 1, entry.cut)}>
                   {entry.episode}화 이어보기
                 </button>
               )}
@@ -1993,7 +2134,8 @@ export default function WebtoonStudioPage() {
                         key={`${currentWork.id}-${currentEpisode.num}-image-${idx}`}
                         src={cut.img}
                         alt=""
-                        className="block w-full h-auto"
+                        data-reader-cut={idx}
+                        className="block w-full h-auto scroll-mt-16"
                         loading="lazy"
                         onError={(event) => { event.currentTarget.style.display = 'none'; }}
                       />
@@ -2237,9 +2379,12 @@ export default function WebtoonStudioPage() {
                       <span className="text-xs font-bold text-slate-200">{c.author}</span>
                       <span className="text-[11px] text-amber-400">· {c.episode}화</span>
                     </div>
-                    <span className="text-[11px] text-slate-500">{c.createdAt}</span>
+                    <span className="text-[11px] text-slate-500">{new Date(c.createdAt).toLocaleDateString('ko-KR')}</span>
                   </div>
                   <p className="text-sm text-slate-300 leading-relaxed">{c.content}</p>
+                  {libraryUserId && <button type="button" className="text-xs text-slate-300" onClick={() => {
+                    setReportReason(''); setReportTarget({ kind: 'comment', id: c.id });
+                  }}>댓글 신고</button>}
                 </div>
               ))}
             </div>
@@ -2249,6 +2394,25 @@ export default function WebtoonStudioPage() {
         {/* ==================== 6. 설정 탭 (일반 독자 · 작가 회원가입/로그인 & 작가 스튜디오) ==================== */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
+            {isAdminLoggedIn && <section className="space-y-2 rounded-xl border border-slate-800 p-4">
+              <h2 className="font-bold">신고 관리</h2>
+              <button type="button" className="text-amber-300" onClick={() => void loadReports()}>신고 목록 불러오기</button>
+              {reports.map((report) => <div key={report.id} className="space-y-2 rounded-lg bg-slate-900 p-3 text-sm">
+                <p>#{report.id} · {report.kind === 'work' ? '작품' : '댓글'} · {report.target} · {report.reason}</p>
+                {report.preview && <p className="break-words text-slate-200">{report.preview}</p>}
+                <p>상태 {({ open: '접수', hide: '숨김', restore: '복구', dismiss: '기각' })[report.status] ?? report.status}</p>
+                {report.history.length > 0 && <details className="text-xs text-slate-400">
+                  <summary>처리 기록</summary>
+                  {report.history.map((item, idx) => <p key={idx}>{new Date(item.at).toLocaleString('ko-KR')} · {({ hide: '숨김', restore: '복구', dismiss: '기각' })[item.action] ?? item.action}</p>)}
+                </details>}
+                {(['hide', 'restore', 'dismiss'] as const).map((state) => <button key={state} type="button" className="mr-4 text-amber-300"
+                  onClick={async () => { if (await submitModeration({ action: 'resolve', id: report.id, state })) {
+                    await loadReports();
+                    const response = await fetch('/api/creator/works', { cache: 'no-store' });
+                    if (response.ok) setWorks((await response.json()).works.filter(isCatalogWork));
+                  } }}>{({ hide: '숨김', restore: '복구', dismiss: '기각' })[state]}</button>)}
+              </div>)}
+            </section>}
             <section id="friend-invite" className="scroll-mt-20 space-y-3 rounded-2xl border border-slate-800 bg-slate-900 p-5">
               <h2 className="text-base font-bold text-white">친구 초대</h2>
               <p className="text-sm text-slate-200">{inviteTerms}</p>
@@ -2582,6 +2746,10 @@ export default function WebtoonStudioPage() {
                               <>
                                 <p className="text-xs text-slate-400">현재 장르 {genreWork.genre}</p>
                                 {renderGenrePicker(editedGenres, setEditedGenres)}
+                                <button type="button" className="mr-2 rounded-lg border border-slate-700 px-3 py-2 text-sm"
+                                  onClick={() => void setWorkCompletion(genreWork)}>
+                                  {genreWork.completed ? '연재 중으로 변경' : '완결로 변경'}
+                                </button>
                                 <button type="submit" disabled={!editedGenres.length}
                                   className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-40">
                                   {savingGenre ? '저장 중…' : '장르 저장'}
@@ -2722,7 +2890,7 @@ export default function WebtoonStudioPage() {
                                   <option value="new">새 회차 등록</option>
                                   {(myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes.map((episode) => (
                                     <option key={episode.num} value={episode.num}>
-                                      제 {episode.num}화 - {episode.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim()} 수정
+                                      제 {episode.num}화 {episode.releaseAt === 0 ? '(임시저장)' : (episode.releaseAt ?? 0) > Date.now() ? '(공개 예약)' : ''} - {episode.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim()} 수정
                                     </option>
                                   ))}
                                 </select>
@@ -2937,13 +3105,29 @@ export default function WebtoonStudioPage() {
                                 ))}
                               </div>
 
+                              <div className="space-y-2">
+                                <label className="block text-sm">회차 공개 방식
+                                  <select value={publishMode} onChange={(event) => setPublishMode(event.target.value)} className="block w-full rounded bg-slate-800 p-2">
+                                    <option value="now">즉시 공개</option><option value="draft">비공개 임시저장</option><option value="scheduled">예약 공개</option>
+                                  </select>
+                                </label>
+                                {publishMode === 'scheduled' && <label className="block text-sm">공개 일시 (기기의 현지 시간)
+                                  <input required type="datetime-local" value={publishDate} onChange={(event) => setPublishDate(event.target.value)} className="block w-full rounded bg-slate-800 p-2" />
+                                </label>}
+                                <details className="rounded border border-slate-700 p-2">
+                                  <summary>모바일 미리보기</summary>
+                                  <div className="mx-auto mt-2 max-w-[360px]">
+                                    {newEpCuts.filter((cut) => cut.img).map((cut, index) => <img key={index} src={cut.img} alt={`미리보기 ${index + 1}컷`} loading="lazy" className="block w-full" />)}
+                                  </div>
+                                </details>
+                              </div>
                               <button
                                 type="submit"
                                 disabled={isUploadingCutFiles || isCheckingCutImages || isSavingEpisode}
                                 className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-extrabold text-sm transition flex items-center justify-center gap-1.5"
                               >
                                 <Upload className="w-4 h-4" />
-                                {isSavingEpisode ? '이미지 확인·저장 중...' : editingEpisodeNum !== null ? '회차 수정 저장하기' : '회차 업로드 및 즉시 공개하기'}
+                                {isSavingEpisode ? '이미지 확인·저장 중...' : publishMode === 'draft' ? '임시저장' : publishMode === 'scheduled' ? '공개 예약 저장' : '회차 공개 저장'}
                               </button>
                             </>
                           )}

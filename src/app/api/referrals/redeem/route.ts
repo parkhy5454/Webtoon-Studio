@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
         JOIN webtoon_creator_works work ON work.id = program.work_id
         WHERE reward.recipient_id = ${user.id} AND work.author_id <> ${user.id}
           AND payment.status IN ('PAID', 'PARTIAL_CANCELLED')
-          AND jsonb_path_exists(work.payload, '$.episodes[*] ? (@.num > 5)')
+          AND NOT EXISTS (SELECT 1 FROM webtoon_hidden_works hidden WHERE hidden.work_id = work.id)
+          AND jsonb_path_exists(work.payload, '$.episodes[*] ? (@.num > 5 && (!exists(@.releaseAt) || (@.releaseAt > 0 && @.releaseAt <= $now)))', jsonb_build_object('now', EXTRACT(EPOCH FROM NOW()) * 1000))
           AND NOT EXISTS (SELECT 1 FROM webtoon_referral_redemptions used
             WHERE used.invitee_id = reward.invitee_id AND used.recipient_id = reward.recipient_id)
           AND NOT EXISTS (SELECT 1 FROM webtoon_referral_redemptions active

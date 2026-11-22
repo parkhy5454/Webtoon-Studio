@@ -1,3 +1,4 @@
+import { ensureLibrarySchema } from '@/lib/reader-library';
 import { getReferralWorks } from '@/lib/referral-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql, hasDatabaseUrl } from '@/lib/db';
@@ -17,23 +18,31 @@ type CreatorWorkPayload = Record<string, unknown> & {
 export async function GET(request: NextRequest) {
   if (!hasDatabaseUrl()) return NextResponse.json({ works: [] });
   try {
-    await ensureAuthSchema();
+    await ensureLibrarySchema();
     const sql = getSql();
     const admin = getAdminSession(request);
     const user = admin ? null : await getSessionUser(request);
     const rows = await sql`
-      SELECT author_id, payload FROM webtoon_creator_works ORDER BY created_at ASC
+      SELECT author_id, payload, created_at, updated_at,
+        (SELECT count(*)::int FROM webtoon_reader_library l WHERE l.work_id = w.id AND l.user_id <> w.author_id
+          AND (l.last_read_at >= NOW() - INTERVAL '7 days' OR (l.saved AND l.saved_at >= NOW() - INTERVAL '7 days'))) AS popularity
+      FROM webtoon_creator_works w
+      WHERE NOT EXISTS (SELECT 1 FROM webtoon_hidden_works h WHERE h.work_id = w.id)
+         OR ${Boolean(admin)} OR author_id = ${user?.id ?? null}
+      ORDER BY created_at ASC
     `;
     const paidWorks = new Set(user ? [...await getPaidWorks(user.id), ...await getReferralWorks(user.id)] : []);
-    const works = rows.map(({ author_id, payload }) => {
-      if (admin || user?.id === author_id || paidWorks.has(payload?.id) || !Array.isArray(payload?.episodes)) return payload;
+    const now = Date.now();
+    const works = rows.map(({ author_id, payload, created_at, updated_at, popularity }) => {
+      const own = !!admin || user?.id === author_id;
+      const episodes: { num: number; title: string; cuts: unknown; releaseAt?: number }[] = Array.isArray(payload?.episodes) ? payload.episodes : [];
+      const visible = episodes.filter((ep) => ep && (ep.releaseAt == null || (ep.releaseAt > 0 && ep.releaseAt <= now)));
+      const canRead = own || paidWorks.has(payload?.id);
       return {
-        ...payload,
-        episodes: payload.episodes.map((episode: Record<string, unknown>) => ({
-          num: episode?.num, title: episode?.title,
-          cuts: typeof episode?.num === 'number' && episode.num >= 1 && episode.num <= 5
-            ? episode.cuts : [],
-        })),
+        ...payload, popularity, createdAt: created_at, updatedAt: updated_at,
+        latestRelease: Math.max(0, ...visible.map((ep) => Number(ep.releaseAt) || 0)),
+        episodes: (own ? episodes : visible).map((ep) =>
+          canRead ? ep : { num: ep.num, title: ep.title, cuts: ep.num >= 1 && ep.num <= 5 ? ep.cuts : [] }),
       };
     });
     return NextResponse.json({ works }, { headers: { 'Cache-Control': 'private, no-store' } });
@@ -91,6 +100,13 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '작가 계정으로 로그인해 주세요.' }, { status: 401 });
     }
     const body = await request.json().catch(() => null);
+    if (typeof body?.id === 'string' && typeof body.completed === 'boolean') {
+      const [work] = await getSql()`
+        UPDATE webtoon_creator_works SET payload = jsonb_set(payload, '{completed}', to_jsonb(${body.completed}::boolean))
+        WHERE id = ${body.id} AND author_id = ${user.id} RETURNING id
+      `;
+      return NextResponse.json({ saved: !!work }, { status: work ? 200 : 404 });
+    }
     const genres: unknown = body?.genres;
     if (typeof body?.id !== 'string' || !Array.isArray(genres) || genres.length < 1 ||
         genres.length > 2 || new Set(genres).size !== genres.length ||

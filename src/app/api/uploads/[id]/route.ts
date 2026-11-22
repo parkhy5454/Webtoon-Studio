@@ -26,11 +26,13 @@ export async function GET(
         ${Boolean(admin)} OR asset.uploader_user_id = ${user?.id ?? null}
         OR EXISTS (
           SELECT 1 FROM webtoon_creator_works work
-          WHERE work.author_id = asset.uploader_user_id AND (
+          WHERE work.author_id = asset.uploader_user_id
+          AND NOT EXISTS (SELECT 1 FROM webtoon_hidden_works hidden WHERE hidden.work_id = work.id)
+          AND (
             work.payload->'coverImg' = ${imageUrl}::jsonb OR
-            jsonb_path_exists(work.payload, '$.episodes[*] ? (@.num >= 1 && @.num <= 5).cuts[*] ? (@.img == $image)', jsonb_build_object('image', ${imageUrl}::jsonb), true) OR (
+            jsonb_path_exists(work.payload, '$.episodes[*] ? (@.num >= 1 && @.num <= 5 && (!exists(@.releaseAt) || (@.releaseAt > 0 && @.releaseAt <= $now))).cuts[*] ? (@.img == $image)', jsonb_build_object('image', ${imageUrl}::jsonb, 'now', EXTRACT(EPOCH FROM NOW()) * 1000), true) OR (
               ${paidWorks}::jsonb ? work.id AND
-              jsonb_path_exists(work.payload, '$.episodes[*].cuts[*] ? (@.img == $image)', jsonb_build_object('image', ${imageUrl}::jsonb), true)
+              jsonb_path_exists(work.payload, '$.episodes[*] ? ((!exists(@.releaseAt) || (@.releaseAt > 0 && @.releaseAt <= $now))).cuts[*] ? (@.img == $image)', jsonb_build_object('image', ${imageUrl}::jsonb, 'now', EXTRACT(EPOCH FROM NOW()) * 1000), true)
             )
           )
         )

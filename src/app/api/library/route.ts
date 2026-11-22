@@ -1,5 +1,6 @@
+import { ensureLibrarySchema } from '@/lib/reader-library';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionUser, ensureAuthSchema } from '@/lib/auth';
+import { getSessionUser } from '@/lib/auth';
 import { getPaidWorks } from '@/lib/work-payments';
 import { getReferralWorks } from '@/lib/referral-access';
 import { getSql } from '@/lib/db';
@@ -12,24 +13,6 @@ function reply(body: object, status = 200) {
   return NextResponse.json(body, { status, headers: privateHeaders });
 }
 
-async function ensureLibrarySchema() {
-  await ensureAuthSchema();
-  const sql = getSql();
-  await sql`
-    CREATE TABLE IF NOT EXISTS webtoon_reader_library (
-      user_id TEXT NOT NULL REFERENCES webtoon_users(id) ON DELETE CASCADE,
-      work_id TEXT NOT NULL REFERENCES webtoon_creator_works(id) ON DELETE CASCADE,
-      saved BOOLEAN NOT NULL DEFAULT FALSE,
-      last_episode INTEGER,
-      read_first BOOLEAN NOT NULL DEFAULT FALSE,
-      read_second BOOLEAN NOT NULL DEFAULT FALSE,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (user_id, work_id)
-    )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS webtoon_reader_library_work_idx ON webtoon_reader_library(work_id)`;
-}
-
 export async function GET(request: NextRequest) {
   try {
     const user = await getSessionUser(request);
@@ -37,9 +20,9 @@ export async function GET(request: NextRequest) {
     await ensureLibrarySchema();
     const sql = getSql();
     const entries = await sql`
-      SELECT work_id AS "workId", saved, last_episode AS "episode"
+      SELECT work_id AS "workId", saved, last_episode AS "episode", last_cut AS cut, updated_at AS "updatedAt", saved_at AS "savedAt"
       FROM webtoon_reader_library WHERE user_id = ${user.id}
-      ORDER BY updated_at DESC
+      ORDER BY COALESCE(last_read_at, updated_at) DESC
     `;
     const stats = user.role === 'creator' ? await sql`
       SELECT w.id AS "workId",
@@ -74,15 +57,18 @@ export async function POST(request: NextRequest) {
     const sql = getSql();
     const unlocked = episode !== null && episode > 5
       && ([...await getPaidWorks(user.id), ...await getReferralWorks(user.id)]).includes(workId);
+    const cut = Number.isInteger(body.cut) ? Math.max(0, Math.min(10000, body.cut)) : 0;
     const [entry] = await sql`
-      INSERT INTO webtoon_reader_library (user_id, work_id, saved, last_episode, read_first, read_second)
+      INSERT INTO webtoon_reader_library (user_id, work_id, saved, last_episode, read_first, read_second, last_cut, last_read_at, saved_at)
       SELECT ${user.id}, w.id, COALESCE(${saved}::boolean, FALSE), ${episode}::int,
-        COALESCE(${episode}::int = 1, FALSE), COALESCE(${episode}::int = 2, FALSE)
+        COALESCE(${episode}::int = 1, FALSE), COALESCE(${episode}::int = 2, FALSE), ${cut},
+        CASE WHEN ${episode}::int IS NOT NULL THEN NOW() END,
+        CASE WHEN ${saved}::boolean THEN NOW() END
       FROM webtoon_creator_works w
-      WHERE w.id = ${workId} AND (
+      WHERE w.id = ${workId} AND NOT EXISTS (SELECT 1 FROM webtoon_hidden_works h WHERE h.work_id = w.id) AND (
         ${episode}::int IS NULL OR (
           (${episode}::int <= 5 OR ${unlocked}::boolean OR w.author_id = ${user.id}) AND
-          jsonb_path_exists(w.payload, '$.episodes[*] ? (@.num == $number)', jsonb_build_object('number', ${episode}::int), true)
+          jsonb_path_exists(w.payload, '$.episodes[*] ? (@.num == $number && (!exists(@.releaseAt) || (@.releaseAt > 0 && @.releaseAt <= $now)))', jsonb_build_object('number', ${episode}::int, 'now', EXTRACT(EPOCH FROM NOW()) * 1000), true)
         )
       )
       ON CONFLICT (user_id, work_id) DO UPDATE SET
@@ -90,8 +76,11 @@ export async function POST(request: NextRequest) {
         last_episode = COALESCE(EXCLUDED.last_episode, webtoon_reader_library.last_episode),
         read_first = webtoon_reader_library.read_first OR EXCLUDED.read_first,
         read_second = webtoon_reader_library.read_second OR EXCLUDED.read_second,
+        last_cut = CASE WHEN EXCLUDED.last_episode IS NULL THEN webtoon_reader_library.last_cut ELSE EXCLUDED.last_cut END,
+        last_read_at = COALESCE(EXCLUDED.last_read_at, webtoon_reader_library.last_read_at),
+        saved_at = CASE WHEN webtoon_reader_library.saved THEN webtoon_reader_library.saved_at ELSE EXCLUDED.saved_at END,
         updated_at = NOW()
-      RETURNING work_id AS "workId", saved, last_episode AS "episode"
+      RETURNING work_id AS "workId", saved, last_episode AS "episode", last_cut AS cut, updated_at AS "updatedAt", saved_at AS "savedAt"
     `;
     return entry ? reply({ entry }) : reply({ error: '작품이나 열람할 수 있는 회차를 찾지 못했습니다.' }, 404);
   } catch (error) {

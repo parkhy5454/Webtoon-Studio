@@ -47,7 +47,8 @@ export async function POST(request: NextRequest) {
     const [work] = await sql`
       SELECT id, LEFT(payload->>'title', 70) AS title FROM webtoon_creator_works
       WHERE id = ${workId} AND author_id <> ${user.id}
-       AND jsonb_path_exists(payload, '$.episodes[*] ? (@.num > 5)')
+       AND NOT EXISTS (SELECT 1 FROM webtoon_hidden_works hidden WHERE hidden.work_id = webtoon_creator_works.id)
+          AND jsonb_path_exists(payload, '$.episodes[*] ? (@.num > 5 && (!exists(@.releaseAt) || (@.releaseAt > 0 && @.releaseAt <= $now)))', jsonb_build_object('now', EXTRACT(EPOCH FROM NOW()) * 1000))
     `;
     if (!work?.title) return NextResponse.json({ error: '구매할 수 있는 작품을 찾지 못했습니다.' }, { status: 404 });
     const [, orders] = await sql.transaction([
