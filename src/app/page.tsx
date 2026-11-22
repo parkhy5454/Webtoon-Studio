@@ -2758,12 +2758,6 @@ export default function WebtoonStudioPage() {
                 <span>등록 작품 수</span>
                 <span className="text-slate-200 font-medium">총 {works.length}편 연재 중</span>
               </div>
-              <div className="flex justify-between py-1">
-                <span>시스템 스택</span>
-                <span className="text-slate-200 font-medium">
-                  Next.js · Neon DB · PortOne V2
-                </span>
-              </div>
             </div>
           </div>
         )}
