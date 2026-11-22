@@ -1105,7 +1105,7 @@ export default function WebtoonStudioPage() {
       showToast('수정할 회차를 다시 선택해 주세요.');
       return;
     }
-    const cleanEpisodeTitle = newEpTitle.trim().replace(/^제\s*\d+\s*화\s*[-:：–—]?\s*/, '').trim();
+    const cleanEpisodeTitle = newEpTitle.trim().replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim();
     if (!cleanEpisodeTitle) {
       showToast('회차 제목을 입력해주세요.');
       return;
@@ -2280,6 +2280,7 @@ export default function WebtoonStudioPage() {
                         : '로그인'}
                     </button>
                   </form>
+                  {authMode === 'login' && <a href="/reset-password" className="text-xs text-slate-300 underline">비밀번호 재설정</a>}
                 </div>
               ) : (
                 /* 로그인 상태 표시 카드 */
