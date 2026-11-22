@@ -1682,7 +1682,7 @@ export default function WebtoonStudioPage() {
                 ) : viewerImageCuts.length > 0 ? (
                   <div className="w-full max-w-3xl mx-auto space-y-3">
                     <div
-                      className="w-full min-h-[40vh] flex justify-center items-start"
+                      className="w-full min-h-[40vh] flex justify-center items-start overscroll-x-contain"
                       style={{ touchAction: 'pan-y pinch-zoom' }}
                       onTouchStart={(event) => {
                         if (event.touches.length !== 1) { readerTouchStart.current = null; return; }
@@ -1697,9 +1697,9 @@ export default function WebtoonStudioPage() {
                         const touch = event.changedTouches[0];
                         const dx = touch.clientX - start.x;
                         const dy = touch.clientY - start.y;
-                        if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy) * 1.3) return;
-                        setReaderCutIndex(Math.min(
-                          Math.max(0, activeReaderCut + (dx < 0 ? 1 : -1)),
+                        if (Math.abs(dx) < 36 || Math.abs(dx) <= Math.abs(dy) * 1.25) return;
+                        setReaderCutIndex((previous) => Math.min(
+                          Math.max(0, Math.min(previous, viewerImageCuts.length - 1) + (dx < 0 ? 1 : -1)),
                           viewerImageCuts.length - 1
                         ));
                       }}
@@ -1744,7 +1744,7 @@ export default function WebtoonStudioPage() {
                           className="text-amber-300 underline">다시 시도</button>
                       </p>
                     )}
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="sticky bottom-16 z-30 flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-2">
                       <button type="button" disabled={activeReaderCut === 0}
                         onClick={() => setReaderCutIndex(Math.max(0, activeReaderCut - 1))}
                         className="px-4 py-2 rounded-lg bg-slate-800 text-sm text-white disabled:opacity-30"
