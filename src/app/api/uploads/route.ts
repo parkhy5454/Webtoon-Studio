@@ -42,9 +42,18 @@ export async function POST(request: NextRequest) {
 
     const sql = getSql();
     const assets = [];
-    for (const file of files) {
+    const imageBuffers = await Promise.all(files.map(async (file) => Buffer.from(await file.arrayBuffer())));
+    const signaturesMatch = imageBuffers.every((buffer, index) => {
+      const type = files[index].type;
+      if (type === 'image/png') return buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
+      if (type === 'image/jpeg') return buffer.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'));
+      return buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
+    });
+    if (!signaturesMatch) return NextResponse.json({ error: '이미지 파일 형식을 확인해 주세요.' }, { status: 400 });
+
+    for (const [index, file] of files.map((file, index) => [index, file] as const)) {
       const id = randomUUID();
-      const base64 = Buffer.from(await file.arrayBuffer()).toString('base64');
+      const base64 = imageBuffers[index].toString('base64');
       await sql`
         INSERT INTO webtoon_assets (id, uploader_user_id, file_name, content_type, data_base64)
         VALUES (${id}, ${user.id}, ${file.name.slice(0, 255)}, ${file.type}, ${base64})

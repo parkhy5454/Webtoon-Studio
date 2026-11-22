@@ -69,6 +69,9 @@ interface UserAccount {
   joinedAt: string;
 }
 
+interface LibraryEntry { workId: string; saved: boolean; episode: number | null; }
+interface WorkStats { workId: string; firstReaders: number; secondReaders: number; saves: number; }
+
 interface WebtoonWork {
   id: string;
   title: string;
@@ -248,6 +251,9 @@ export default function WebtoonStudioPage() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
 
   // 다중 작품(공유 플랫폼) 상태
+  const [library, setLibrary] = useState<LibraryEntry[]>([]);
+  const [workStats, setWorkStats] = useState<WorkStats[]>([]);
+  const [savedOnly, setSavedOnly] = useState(false);
   const [works, setWorks] = useState<WebtoonWork[]>([]);
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
   const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
@@ -583,6 +589,42 @@ export default function WebtoonStudioPage() {
   }, undefined);
 
   const isCurrentAccessible = canAccessEpisode(currentWork, currentEpisode.num);
+  const libraryUserId = currentUser?.role !== 'admin' ? currentUser?.id : undefined;
+  useEffect(() => {
+    setLibrary([]);
+    setWorkStats([]);
+    setSavedOnly(false);
+    if (!libraryUserId) return;
+    const controller = new AbortController();
+    void fetch('/api/library', { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        setLibrary(data.entries);
+        setWorkStats(data.stats);
+      }).catch(() => undefined);
+    return () => controller.abort();
+  }, [libraryUserId]);
+
+  const readingWorkId = currentWork.id;
+  const readingEpisode = currentEpisode.num;
+  const hasReadingContent = currentEpisode.cuts.length > 0;
+  useEffect(() => {
+    if (!libraryUserId || activeTab !== 'viewer' || !isCurrentAccessible || !hasReadingContent) return;
+    const controller = new AbortController();
+    void fetch('/api/library', {
+      signal: controller.signal,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workId: readingWorkId, episode: readingEpisode }),
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const { entry } = await response.json();
+      if (!controller.signal.aborted) setLibrary((items) => [entry, ...items.filter((item) => item.workId !== entry.workId)]);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [libraryUserId, activeTab, isCurrentAccessible, hasReadingContent, readingWorkId, readingEpisode]);
   const displayedEpisodeTitle = currentEpisode.title
     .replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '')
     .trim() || currentEpisode.title;
@@ -1221,6 +1263,7 @@ export default function WebtoonStudioPage() {
     works.flatMap((work) => getWorkGenres(work.genre))
   )).sort((a, b) => a.localeCompare(b, 'ko'));
   const catalogWorks = works.filter((work) => {
+    if (savedOnly && !library.some((entry) => entry.workId === work.id && entry.saved)) return false;
     const query = catalogQuery.trim().toLocaleLowerCase();
     return (!query || [work.title, work.authorName, work.genre, work.synopsis]
       .some((value) => value.toLocaleLowerCase().includes(query))) &&
@@ -1512,7 +1555,13 @@ export default function WebtoonStudioPage() {
                     <option value="title-desc">제목 내림차순 (역가나다순)</option>
                   </select>
                 </div>
-                <p className="text-xs text-slate-400">{catalogWorks.length}편 표시</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-slate-400">{catalogWorks.length}편 표시</p>
+                  {libraryUserId && <button type="button" aria-pressed={savedOnly} onClick={() => setSavedOnly((value) => !value)}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-100">
+                    {savedOnly ? '모든 작품 보기' : '관심 작품만 보기'}
+                  </button>}
+                </div>
               </div>
               {catalogWorks.length === 0 && (
                 <div className="p-8 rounded-xl bg-slate-900 text-center">
@@ -1630,6 +1679,31 @@ export default function WebtoonStudioPage() {
                 className="w-full rounded-xl border border-slate-700 py-2.5 text-sm font-bold text-slate-100">
                 작품 공유
               </button>
+              {libraryUserId && <button type="button" className="w-full rounded-xl border border-slate-700 py-2 text-sm"
+                onClick={async () => {
+                  const workId = catalogSelectedWork.id;
+                  try {
+                    const response = await fetch('/api/library', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ workId, saved: !library.some((item) => item.workId === workId && item.saved) }),
+                    });
+                    if (!response.ok) throw new Error();
+                    const { entry } = await response.json();
+                    setLibrary((items) => [entry, ...items.filter((item) => item.workId !== entry.workId)]);
+                  } catch {
+                    showToast('관심 작품을 변경하지 못했습니다.');
+                  }
+                }}>
+                {library.some((item) => item.workId === catalogSelectedWork.id && item.saved) ? '관심 작품 해제' : '관심 작품 저장'}
+              </button>}
+              {library.filter((entry) => entry.workId === catalogSelectedWork.id && entry.episode !== null).map((entry) =>
+                catalogSelectedWork.episodes.some((episode) => episode.num === entry.episode) &&
+                <button key={entry.workId} type="button" className="w-full rounded-xl border border-amber-400 py-2 text-sm text-amber-300"
+                  onClick={() => handleSelectWorkAndEpisode(entry.workId, entry.episode ?? 1)}>
+                  {entry.episode}화 이어보기
+                </button>
+              )}
             </div>
 
             {/* 선택된 작품의 전체 회차 리스트 */}
@@ -2707,6 +2781,20 @@ export default function WebtoonStudioPage() {
                             <Coins className="w-4 h-4 text-amber-400" />
                             작품별 구독 수익 정산 현황 (작가 70% · 플랫폼 30%)
                           </h3>
+                          {workStats.length > 0 && (
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-bold text-white">작품별 독자 통계</h4>
+                              {workStats.map((stat) => (
+                                <p key={stat.workId} className="rounded-lg bg-slate-900 p-3 text-xs text-slate-300">
+                                  <strong className="block text-white">{works.find((item) => item.id === stat.workId)?.title}</strong>
+                                  1화 {stat.firstReaders}명 · 2화도 읽은 독자 {stat.secondReaders}명
+                                  {' '}({stat.firstReaders ? Math.round(stat.secondReaders * 100 / stat.firstReaders) : 0}%)
+                                  {' '}· 관심 {stat.saves}명
+                                </p>
+                              ))}
+                              <p className="text-xs text-slate-400">로그인한 독자의 회차 진입 기준입니다.</p>
+                            </div>
+                          )}
                           <div className="grid grid-cols-2 gap-3">
                             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                               <span className="text-[11px] text-slate-400 flex items-center gap-1">
