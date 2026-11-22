@@ -417,6 +417,11 @@ export default function WebtoonStudioPage() {
     return false;
   };
 
+  const nextEpisode = currentWork.episodes.reduce<Episode | undefined>((next, episode) => {
+    if (episode.num <= currentEpisode.num) return next;
+    return !next || episode.num < next.num ? episode : next;
+  }, undefined);
+
   const isCurrentAccessible = canAccessEpisode(currentWork, currentEpisode.num);
   const displayedEpisodeTitle = currentEpisode.title
     .replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '')
@@ -470,8 +475,9 @@ export default function WebtoonStudioPage() {
   const handleSelectWorkAndEpisode = (workId: string, epNum: number) => {
     setSelectedWorkId(workId);
     setSelectedEpisodeNum(epNum);
+    setReaderCutIndex(0);
     setActiveTab('viewer');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
   };
 
   // 관리자 검수 모드 핸들러 (PIN 2026)
@@ -1659,18 +1665,33 @@ export default function WebtoonStudioPage() {
                   <p className="py-10 text-center text-sm text-slate-400">등록된 이미지가 없습니다.</p>
                 )}
 
-                {currentEpisode.num < currentWork.episodes.length && (
+                <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                  {nextEpisode ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectWorkAndEpisode(currentWork.id, nextEpisode.num)}
+                      className="flex items-center gap-2 rounded-xl bg-amber-400 px-6 py-3 text-sm font-bold text-slate-950 hover:bg-amber-300"
+                    >
+                      {nextEpisode.num}화 보기
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <p className="text-sm text-slate-400">아직 공개된 다음 화가 없습니다.</p>
+                  )}
                   <button
                     type="button"
-                    onClick={() =>
-                      handleSelectWorkAndEpisode(currentWork.id, currentEpisode.num + 1)
-                    }
-                    className="mx-auto flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm font-bold transition"
+                    onClick={() => {
+                      setCatalogWorkId(currentWork.id);
+                      setActiveTab('works');
+                      requestAnimationFrame(() => {
+                        document.getElementById('catalog-work-detail')?.scrollIntoView();
+                      });
+                    }}
+                    className="rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-200"
                   >
-                    다음 회차 보기
-                    <ChevronRight className="w-4 h-4" />
+                    회차 목록
                   </button>
-                )}
+                </div>
               </>
             ) : (
               <div className="p-8 sm:p-10 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 text-center space-y-5">
