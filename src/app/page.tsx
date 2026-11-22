@@ -2658,6 +2658,16 @@ export default function WebtoonStudioPage() {
                           <p className="text-[11px] text-slate-400 leading-relaxed">
                             PG 연동 후 작품별 실제 결제액에서 환불액과 카드·PG 수수료를 공제한 금액을 기준으로 집계합니다.
                           </p>
+                          <aside className="space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-4 text-xs leading-relaxed text-slate-300">
+                            <h4 className="font-bold text-white">친구 초대 무료 이용권 사전 안내</h4>
+                            <p>친구가 가입 후 첫 결제를 완료하면 초대한 사람과 친구가 각각 참여 작품 한 편을 30일간 볼 수 있는 이용권을 받습니다.</p>
+                            <ul className="list-disc space-y-1 pl-4">
+                              <li>작가가 참여를 신청한 작품에만 적용하며, 작가가 월 제공 한도를 정합니다.</li>
+                              <li>무료 이용권 사용 건의 작가 정산액은 0원입니다. 유료 판매 정산액에서 별도로 차감하지 않습니다.</li>
+                              <li>추천 이용권 사용 건수는 유료 판매 건수와 구분해 표시할 예정입니다.</li>
+                            </ul>
+                            <p className="text-amber-300">PG 연동 후 시작 예정입니다. 현재 참여 신청과 이용권 지급은 준비 중입니다.</p>
+                          </aside>
                         </div>
                       )}
                     </div>
