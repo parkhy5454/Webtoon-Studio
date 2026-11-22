@@ -131,7 +131,7 @@ const checkImageUrl = (url: string): Promise<boolean> =>
     image.src = url;
   });
 
-const WORK_GENRES = ['로맨스', '로맨스판타지', '판타지', '액션', '미스터리·추리', '스릴러', '코미디', 'SF', '시대극', '드라마', '일상'];
+const WORK_GENRES = ['로맨스', '로맨스판타지', '판타지', '액션', '미스터리·추리', '스릴러', '코미디', 'SF', '시대극', '드라마', '일상', '기업'];
 const getWorkGenres = (genre: string) =>
   genre.replace(/미스터리\s*·\s*추리/g, '미스터리 추리')
     .split(/[·,\/]/)
