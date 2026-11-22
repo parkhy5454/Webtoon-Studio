@@ -317,6 +317,33 @@ export default function WebtoonStudioPage() {
     setTimeout(() => setToastMsg(null), 2800);
   };
 
+  const [inviteStatus, setInviteStatus] = useState('');
+  const inviteTerms = '친구가 가입 후 첫 결제를 완료하면, 두 사람 모두 참여 작품 1편을 30일간 무료로 감상할 수 있어요.';
+  const inviteNotice = '보상은 결제 연동 후 시작 예정이며, 지금 공유한 링크는 추천으로 집계되지 않습니다.';
+  const getInviteMessage = () =>
+    ['웹툰스튜디오 친구 초대', inviteTerms, inviteNotice, window.location.origin].join('\n');
+
+  const copyInviteMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(getInviteMessage());
+      setInviteStatus('안내와 링크를 복사했습니다. 카카오톡이나 문자에 붙여넣으세요.');
+    } catch {
+      setInviteStatus('복사할 수 없습니다. 아래 문구를 길게 눌러 복사해 주세요.');
+    }
+  };
+
+  const shareInviteMessage = async () => {
+    if (!navigator.share) {
+      await copyInviteMessage();
+      return;
+    }
+    try {
+      await navigator.share({ text: getInviteMessage() });
+    } catch (error) {
+      if (!(error instanceof Error && error.name === 'AbortError')) await copyInviteMessage();
+    }
+  };
+
   // 로컬 스토리지에서 회원 계정 및 등록된 공유 작품 불러오기
   useEffect(() => {
     let localCustomWorks: WebtoonWork[] = [];
@@ -1903,6 +1930,13 @@ export default function WebtoonStudioPage() {
             <p className="text-2xl font-bold text-amber-400">2,900원 <span className="text-sm text-slate-300">/ 30일</span></p>
             <p className="text-sm text-slate-300">1~5화 무료 · 이용권 구매 시 선택한 작품의 6화부터 열람 · 자동 갱신 없음</p>
             <p role="status" className="text-sm font-semibold text-slate-400">결제 준비 중</p>
+            <div className="space-y-2 border-t border-slate-800 pt-4">
+              <p className="text-sm text-slate-200">{inviteTerms}</p>
+              <button type="button" onClick={() => {
+                setActiveTab('settings');
+                requestAnimationFrame(() => document.getElementById('friend-invite')?.scrollIntoView());
+              }} className="text-sm font-semibold text-amber-300">친구 초대 안내 및 공유</button>
+            </div>
           </section>
         )}
 
@@ -1962,6 +1996,27 @@ export default function WebtoonStudioPage() {
         {/* ==================== 6. 설정 탭 (일반 독자 · 작가 회원가입/로그인 & 작가 스튜디오) ==================== */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
+            <section id="friend-invite" className="scroll-mt-20 space-y-3 rounded-2xl border border-slate-800 bg-slate-900 p-5">
+              <h2 className="text-base font-bold text-white">친구 초대</h2>
+              <p className="text-sm text-slate-200">{inviteTerms}</p>
+              <p className="text-xs text-amber-300">{inviteNotice}</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void shareInviteMessage()}
+                  className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-slate-950">
+                  카카오톡·문자 공유
+                </button>
+                <button type="button" onClick={() => void copyInviteMessage()}
+                  className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">
+                  초대 문구 복사
+                </button>
+              </div>
+              {inviteStatus && <p role="status" className="text-xs text-slate-300">{inviteStatus}</p>}
+              {inviteStatus.startsWith('복사할 수 없습니다') && (
+                <textarea aria-label="초대 문구" readOnly value={getInviteMessage()}
+                  className="w-full rounded-lg bg-slate-950 p-3 text-xs text-slate-200" rows={5} />
+              )}
+            </section>
+
             {/* (A) 회원 / 작가 계정 관리 (관리자 관련 문구 및 폼은 일반 화면에 노출하지 않음) */}
             <div className="p-6 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-500/30 space-y-5">
               <div className="flex items-center justify-between gap-2">
