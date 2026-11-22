@@ -2,19 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { hasDatabaseUrl, getSql } from '@/lib/db';
 import { createSession, ensureAuthSchema, verifyPassword, AUTH_COOKIE, sessionCookieOptions } from '@/lib/auth';
 
+import { ADMIN_COOKIE, adminCookieOptions, startAdminSession } from '@/lib/admin-auth';
+
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
-  if (!hasDatabaseUrl()) {
-    return NextResponse.json({ error: '서버에 DATABASE_URL이 설정되지 않았습니다.' }, { status: 503 });
-  }
-
   try {
     const body = await request.json();
     const email = String(body.email || '').trim().toLowerCase();
     const password = String(body.password || '');
     if (!email || !password) {
       return NextResponse.json({ error: '이메일과 비밀번호를 입력해 주세요.' }, { status: 400 });
+    }
+
+    const admin = startAdminSession(email, password);
+    if (admin) {
+      const response = NextResponse.json({ user: admin.user }, { headers: { 'Cache-Control': 'private, no-store' } });
+      response.cookies.set(ADMIN_COOKIE, admin.token, adminCookieOptions());
+      response.cookies.set(AUTH_COOKIE, '', { ...adminCookieOptions(true) });
+      return response;
+    }
+
+    if (!hasDatabaseUrl()) {
+      return NextResponse.json({ error: '서버에 DATABASE_URL이 설정되지 않았습니다.' }, { status: 503 });
     }
 
     await ensureAuthSchema();
@@ -42,6 +52,7 @@ export async function POST(request: NextRequest) {
       },
     });
     response.cookies.set(AUTH_COOKIE, token, sessionCookieOptions(expiresAt));
+    response.cookies.set(ADMIN_COOKIE, '', adminCookieOptions(true));
     return response;
   } catch (error) {
     console.error('POST /api/auth/login error:', error);

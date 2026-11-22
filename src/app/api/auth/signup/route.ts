@@ -5,6 +5,8 @@ import { createSession, hashPassword, AUTH_COOKIE, sessionCookieOptions } from '
 
 import { ensureReferralSchema, normalizeReferralCode } from '@/lib/referrals';
 
+import { ADMIN_COOKIE, adminCookieOptions } from '@/lib/admin-auth';
+
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
@@ -60,6 +62,7 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 });
     response.cookies.set(AUTH_COOKIE, token, sessionCookieOptions(expiresAt));
+    response.cookies.set(ADMIN_COOKIE, '', adminCookieOptions(true));
     return response;
   } catch (error) {
     console.error('POST /api/auth/signup error:', error);

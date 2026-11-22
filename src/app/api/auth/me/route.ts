@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { hasDatabaseUrl } from '@/lib/db';
 import { ensureAuthSchema, getSessionUser } from '@/lib/auth';
 
+import { getAdminSession } from '@/lib/admin-auth';
+
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
+  const admin = getAdminSession(request);
+  if (admin) return NextResponse.json({ user: admin }, { headers: { 'Cache-Control': 'private, no-store' } });
   if (!hasDatabaseUrl()) return NextResponse.json({ user: null });
   try {
     await ensureAuthSchema();

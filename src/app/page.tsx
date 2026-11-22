@@ -9,7 +9,6 @@ import {
   MessageSquare,
   Settings,
   Lock,
-  Unlock,
   ChevronRight,
   ShieldCheck,
   Sparkles,
@@ -262,12 +261,8 @@ export default function WebtoonStudioPage() {
   const [catalogWorkId, setCatalogWorkId] = useState<string | null>(null);
 
   // 멤버십 & 관리자 검수 모드 상태 (기본 화면에서는 비공개)
-  const [isAdminReview, setIsAdminReview] = useState<boolean>(false);
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
   const [secretTapCount, setSecretTapCount] = useState<number>(0);
-  const [adminPinInput, setAdminPinInput] = useState<string>('');
-  const [adminError, setAdminError] = useState<string>('');
-  const [adminSuccessMsg, setAdminSuccessMsg] = useState<string>('');
 
   // 회원(일반 독자 / 작가) 계정 상태
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
@@ -403,15 +398,7 @@ export default function WebtoonStudioPage() {
           }).catch(() => undefined);
         }
       }
-      const savedCurrent = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-      if (savedCurrent) {
-        const parsedUser: UserAccount = JSON.parse(savedCurrent);
-        // 관리자 데모 로그인만 로컬 저장소를 사용합니다. 독자/창작자는 서버 세션에서 복원합니다.
-        if (parsedUser.role === 'admin') {
-          setCurrentUser(parsedUser);
-          setIsAdminReview(true);
-        }
-      }
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
       const savedWorks = localStorage.getItem(STORAGE_KEYS.CUSTOM_WORKS);
       if (savedWorks) {
         const parsedCustom: WebtoonWork[] = JSON.parse(savedWorks);
@@ -433,11 +420,10 @@ export default function WebtoonStudioPage() {
           if (data.user) {
             sessionUser = data.user as UserAccount;
             setCurrentUser(sessionUser);
-            setIsAdminReview(false);
           }
         }
       } catch {
-        // API가 연결되지 않았으면 기존 관리자 로컬 로그인만 유지합니다.
+        // 서버 세션을 조회할 수 없으면 비로그인 상태를 유지합니다.
       }
 
       if (sessionUser?.role === 'creator') {
@@ -579,7 +565,7 @@ export default function WebtoonStudioPage() {
     };
 
   // 배포자/관리자는 멤버십 결제 여부와 관계없이 전체 회차를 열람할 수 있습니다.
-  const isAdminLoggedIn = Boolean(isAdminReview || currentUser?.role === 'admin');
+  const isAdminLoggedIn = currentUser?.role === 'admin';
 
   // 열람 가능 여부 (1~5화 무료, 멤버십/관리자 검수 또는 본인 작품일 때 열람 가능)
   const canAccessEpisode = (work: WebtoonWork, epNum: number) => {
@@ -657,41 +643,16 @@ export default function WebtoonStudioPage() {
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
   };
 
-  // 관리자 검수 모드 핸들러 (PIN 2026)
-  const handleAdminUnlock = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPinInput.trim() === '2026') {
-      const adminAccount: UserAccount = {
-        id: 'admin-master',
-        role: 'admin',
-        displayName: '총괄 관리자',
-        email: 'admin@webtoonstudios.kr',
-        joinedAt: '2026',
-      };
-      fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-      setIsAdminReview(true);
-      setCurrentUser(adminAccount);
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
-      setAdminError('');
-      setAdminSuccessMsg('관리자 모드로 로그인되었습니다. 전체 열람이 가능합니다.');
-      setAdminPinInput('');
-      showToast('관리자 로그인 완료 (전체 회차 잠금 해제)');
-    } else {
-      setAdminError('PIN 번호가 일치하지 않습니다.');
-      setAdminSuccessMsg('');
-    }
-  };
-
-  // 통합 로그아웃 (일반 독자 / 작가 / 관리자 모두 로그아웃)
-  const handleLogoutAll = () => {
-    if (currentUser?.role !== 'admin') {
-      fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+  const handleLogoutAll = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) throw new Error('Logout failed');
+    } catch {
+      showToast('로그아웃에 실패했습니다. 다시 시도해 주세요.');
+      return;
     }
     setCurrentUser(null);
-    setIsAdminReview(false);
     setShowAdminPanel(false);
-    setAdminSuccessMsg('');
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     showToast('로그아웃되었습니다.');
   };
 
@@ -748,25 +709,6 @@ export default function WebtoonStudioPage() {
           : `${name}님, 일반 회원으로 가입되었습니다!`
       );
     } else {
-      // 관리자 이메일(admin@webtoon.kr / 2026) 비공개 로그인 지원
-      if (email === 'admin@webtoon.kr' && password === '2026') {
-        const adminAccount: UserAccount = {
-          id: 'admin-master',
-          role: 'admin',
-          displayName: '총괄 관리자',
-          email: 'admin@webtoon.kr',
-          joinedAt: '2026',
-        };
-        fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-        setCurrentUser(adminAccount);
-        setIsAdminReview(true);
-        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
-        setEmailInput('');
-        setPasswordInput('');
-        showToast('관리자 계정으로 로그인되었습니다.');
-        return;
-      }
-
       try {
         const response = await fetch('/api/auth/login', {
           method: 'POST',
@@ -780,14 +722,13 @@ export default function WebtoonStudioPage() {
         }
         const found = data.user as UserAccount;
         setCurrentUser(found);
-        setIsAdminReview(false);
         if (found.role === 'creator') {
           const saved = await syncCreatorWorks(works, found.id, true).catch(() => false);
           if (!saved) showToast('기존 작품을 DB로 옮기지 못했습니다. 작가 스튜디오에서 다시 저장해 주세요.');
         }
         setEmailInput('');
         setPasswordInput('');
-        showToast(`${found.displayName}님(${found.role === 'creator' ? '작가' : '일반 회원'})으로 로그인되었습니다.`);
+        showToast(found.role === 'admin' ? '총괄 관리자로 로그인되었습니다.' : `${found.displayName}님(${found.role === 'creator' ? '작가' : '일반 회원'})으로 로그인되었습니다.`);
       } catch {
         setAuthError('서버에 연결할 수 없습니다. DATABASE_URL 설정과 배포 상태를 확인해 주세요.');
         return;
@@ -1216,8 +1157,6 @@ export default function WebtoonStudioPage() {
         : currentUser.role === 'creator'
         ? `${currentUser.displayName} (작가)`
         : currentUser.displayName
-      : isAdminReview
-      ? '웹툰스튜디오스_관리자'
       : '비회원_독자';
 
     const item: CommentItem = {
@@ -1263,7 +1202,7 @@ export default function WebtoonStudioPage() {
     }
   };
 
-  const isLoggedIn = Boolean(currentUser || isAdminReview);
+  const isLoggedIn = Boolean(currentUser);
   const catalogGenres = Array.from(new Set(
     works.flatMap((work) => getWorkGenres(work.genre))
   )).sort((a, b) => a.localeCompare(b, 'ko'));
@@ -2142,7 +2081,7 @@ export default function WebtoonStudioPage() {
                     </button>
                   </div>
 
-                  <form onSubmit={handleAuthSubmit} className="space-y-3">
+                  <form id="account-auth-form" onSubmit={handleAuthSubmit} className="space-y-3">
                     {authMode === 'signup' && (
                       <>
                         {/* 회원 유형 선택: 일반 독자 vs 창작 작가 */}
@@ -2268,7 +2207,7 @@ export default function WebtoonStudioPage() {
                             : '일반 독자 계정'}
                         </span>
                         <span className="text-xs text-slate-400">
-                          {currentUser?.email || 'admin@webtoonstudios.kr'}
+                          {currentUser?.email}
                         </span>
                       </div>
                       <p className="text-base font-bold text-white mt-1">
@@ -2826,38 +2765,17 @@ export default function WebtoonStudioPage() {
                     </button>
                   </div>
                 ) : (
-                  <form onSubmit={handleAdminUnlock} className="space-y-3 pt-1">
-                    <label className="block text-xs font-medium text-slate-300">
-                      관리자 인증 코드 입력
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="password"
-                        inputMode="numeric"
-                        maxLength={8}
-                        value={adminPinInput}
-                        onChange={(e) => setAdminPinInput(e.target.value)}
-                        placeholder="인증 코드 입력"
-                        className="flex-1 rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
-                      />
-                      <button
-                        type="submit"
-                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition flex items-center gap-1.5"
-                      >
-                        <Unlock className="w-4 h-4" />
-                        인증
-                      </button>
-                    </div>
-                    {adminError && (
-                      <p className="text-xs text-rose-400 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        {adminError}
-                      </p>
-                    )}
-                    {adminSuccessMsg && (
-                      <p className="text-xs text-emerald-400">{adminSuccessMsg}</p>
-                    )}
-                  </form>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('login');
+                      setAuthError('');
+                      requestAnimationFrame(() => document.getElementById('account-auth-form')?.scrollIntoView({ block: 'center' }));
+                    }}
+                    className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-slate-950"
+                  >
+                    총괄 관리자 이메일로 로그인
+                  </button>
                 )}
               </div>
             )}
