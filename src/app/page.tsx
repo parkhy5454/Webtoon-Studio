@@ -324,7 +324,15 @@ export default function WebtoonStudioPage() {
   const ownInvite = inviteSummary?.userId === inviteUserId ? inviteSummary : null;
 
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('ref');
+    const params = new URLSearchParams(window.location.search);
+    const work = params.get('work');
+    const episode = Number(params.get('episode') ?? 1);
+    if (work && Number.isSafeInteger(episode) && episode > 0) {
+      setSelectedWorkId(work);
+      setSelectedEpisodeNum(episode);
+      setActiveTab('viewer');
+    }
+    const code = params.get('ref');
     if (code) {
       setReferralCode(code);
       setActiveTab('settings');
@@ -387,19 +395,6 @@ export default function WebtoonStudioPage() {
   useEffect(() => {
     let localCustomWorks: WebtoonWork[] = [];
     try {
-      const savedUsers = localStorage.getItem(STORAGE_KEYS.LEGACY_USERS);
-      if (savedUsers) {
-        const legacyUsers = JSON.parse(savedUsers);
-        if (Array.isArray(legacyUsers) && legacyUsers.length > 0) {
-          void fetch('/api/auth/migrate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ users: legacyUsers }),
-          }).then((response) => {
-            if (response.ok) localStorage.removeItem(STORAGE_KEYS.LEGACY_USERS);
-          }).catch(() => undefined);
-        }
-      }
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
       const savedWorks = localStorage.getItem(STORAGE_KEYS.CUSTOM_WORKS);
       if (savedWorks) {
@@ -507,7 +502,6 @@ export default function WebtoonStudioPage() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'works') return;
     let cancelled = false;
     const refreshWorks = async () => {
       try {
@@ -524,6 +518,7 @@ export default function WebtoonStudioPage() {
       } catch { /* Keep the existing catalog available while offline. */ }
     };
     void refreshWorks();
+    if (activeTab !== 'works') return () => { cancelled = true; };
     const interval = window.setInterval(() => { void refreshWorks(); }, 30000);
     const onFocus = () => { void refreshWorks(); };
     window.addEventListener('focus', onFocus);
@@ -532,7 +527,7 @@ export default function WebtoonStudioPage() {
       window.clearInterval(interval);
       window.removeEventListener('focus', onFocus);
     };
-  }, [activeTab]);
+  }, [activeTab, currentUser?.id]);
 
   // 상단 왼쪽 로고/타이틀 클릭 시 홈 메인 화면으로 이동
   const handleGoHome = () => {
@@ -637,6 +632,21 @@ export default function WebtoonStudioPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeTab, readerDirection, isCurrentAccessible, viewerImageCuts.length]);
 
+  const shareWork = async (workId: string, episode = 1) => {
+    const url = new URL('/', window.location.origin);
+    url.searchParams.set('work', workId);
+    url.searchParams.set('episode', String(episode));
+    try {
+      if (navigator.share) await navigator.share({ url: url.toString() });
+      else {
+        await navigator.clipboard.writeText(url.toString());
+        showToast('작품 링크를 복사했습니다.');
+      }
+    } catch (error) {
+      if (!(error instanceof Error && error.name === 'AbortError')) showToast('링크를 공유하지 못했습니다.');
+    }
+  };
+
   const handleSelectWorkAndEpisode = (workId: string, epNum: number) => {
     setSelectedWorkId(workId);
     setSelectedEpisodeNum(epNum);
@@ -654,6 +664,8 @@ export default function WebtoonStudioPage() {
       return;
     }
     setCurrentUser(null);
+    setWorks((items) => items.map((work) => ({ ...work, episodes: work.episodes.map((episode) =>
+      episode.num > 5 ? { ...episode, cuts: [] } : episode) })));
     setShowAdminPanel(false);
     showToast('로그아웃되었습니다.');
   };
@@ -1613,6 +1625,10 @@ export default function WebtoonStudioPage() {
                 {catalogSelectedWork.episodes.length > 0
                   ? '제 1화 첫 화부터 감상하기'
                   : '아직 업로드된 회차가 없습니다'}
+              </button>
+              <button type="button" onClick={() => void shareWork(catalogSelectedWork.id)}
+                className="w-full rounded-xl border border-slate-700 py-2.5 text-sm font-bold text-slate-100">
+                작품 공유
               </button>
             </div>
 

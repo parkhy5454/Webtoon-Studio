@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql, hasDatabaseUrl } from '@/lib/db';
 import { ensureAuthSchema, getSessionUser } from '@/lib/auth';
 
+import { getAdminSession } from '@/lib/admin-auth';
+
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 type CreatorWorkPayload = Record<string, unknown> & {
@@ -9,13 +12,28 @@ type CreatorWorkPayload = Record<string, unknown> & {
   authorId: string;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!hasDatabaseUrl()) return NextResponse.json({ works: [] });
   try {
     await ensureAuthSchema();
     const sql = getSql();
-    const rows = await sql`SELECT payload FROM webtoon_creator_works ORDER BY created_at ASC`;
-    return NextResponse.json({ works: rows.map((row) => row.payload) });
+    const admin = getAdminSession(request);
+    const user = admin ? null : await getSessionUser(request);
+    const rows = await sql`
+      SELECT author_id, payload FROM webtoon_creator_works ORDER BY created_at ASC
+    `;
+    const works = rows.map(({ author_id, payload }) => {
+      if (admin || user?.id === author_id || !Array.isArray(payload?.episodes)) return payload;
+      return {
+        ...payload,
+        episodes: payload.episodes.map((episode: Record<string, unknown>) => ({
+          num: episode?.num, title: episode?.title,
+          cuts: typeof episode?.num === 'number' && episode.num >= 1 && episode.num <= 5
+            ? episode.cuts : [],
+        })),
+      };
+    });
+    return NextResponse.json({ works }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('GET /api/creator/works error:', error);
     return NextResponse.json({ error: '작품 목록을 불러오지 못했습니다.' }, { status: 500 });
