@@ -201,6 +201,34 @@ const getWorkGenres = (genre: string) =>
     .map((item) => item.trim().replace(/^미스터리 추리$/, '미스터리·추리'))
     .filter(Boolean);
 
+const renderGenrePicker = (selectedGenres: string[], setGenres: React.Dispatch<React.SetStateAction<string[]>>) => (
+  <fieldset>
+    <legend className="mb-2 text-xs text-slate-300">장르 선택 (최대 2개)</legend>
+    <div className="flex flex-wrap gap-2">
+      {WORK_GENRES.map((genre) => {
+        const selected = selectedGenres.includes(genre);
+        return (
+          <button
+            key={genre}
+            type="button"
+            aria-pressed={selected}
+            disabled={!selected && selectedGenres.length >= 2}
+            onClick={() => setGenres((previous) => {
+              if (previous.includes(genre)) return previous.filter((item) => item !== genre);
+              return previous.length < 2 ? [...previous, genre] : previous;
+            })}
+            className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected
+              ? 'border-amber-400 bg-amber-400 text-slate-950'
+              : 'border-slate-700 text-slate-200 disabled:opacity-40'}`}
+          >
+            {genre}
+          </button>
+        );
+      })}
+    </div>
+  </fieldset>
+);
+
 const EMPTY_WORK: WebtoonWork = {
   id: '', title: '', authorId: '', authorName: '', genre: '',
   synopsis: '', coverImg: '', subscribers: 0, episodes: [],
@@ -253,6 +281,9 @@ export default function WebtoonStudioPage() {
   // 작가 작품 등록 & 회차 업로드 폼 상태
   const [creatorSubTab, setCreatorSubTab] = useState<'newWork' | 'newEpisode' | 'settlement'>('newWork');
   const [newWorkTitle, setNewWorkTitle] = useState<string>('');
+  const [genreWorkId, setGenreWorkId] = useState('');
+  const [editedGenres, setEditedGenres] = useState<string[]>([]);
+  const [savingGenre, setSavingGenre] = useState(false);
   const [newWorkGenre, setNewWorkGenre] = useState<string[]>(['드라마']);
   const [newWorkSynopsis, setNewWorkSynopsis] = useState<string>('');
   const [newWorkCover, setNewWorkCover] = useState<string>('');
@@ -347,7 +378,7 @@ export default function WebtoonStudioPage() {
             await fetch('/api/creator/works', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ works: ownLocalWorks }),
+              body: JSON.stringify({ works: ownLocalWorks, importOnly: true }),
             });
           } catch {
             // 네트워크가 복구되면 작가가 다시 저장할 수 있습니다.
@@ -383,13 +414,13 @@ export default function WebtoonStudioPage() {
     void hydrateServerData();
   }, []);
 
-  const syncCreatorWorks = async (workList: WebtoonWork[], userId: string) => {
+  const syncCreatorWorks = async (workList: WebtoonWork[], userId: string, importOnly = false) => {
     const ownWorks = workList.filter((work) => work.authorId === userId);
     if (ownWorks.length === 0) return true;
     const response = await fetch('/api/creator/works', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ works: ownWorks }),
+      body: JSON.stringify({ works: ownWorks, importOnly }),
     });
     return response.ok;
   };
@@ -632,7 +663,7 @@ export default function WebtoonStudioPage() {
         const newAccount = data.user as UserAccount;
         setCurrentUser(newAccount);
         if (newAccount.role === 'creator') {
-          const saved = await syncCreatorWorks(works, newAccount.id).catch(() => false);
+          const saved = await syncCreatorWorks(works, newAccount.id, true).catch(() => false);
           if (!saved) showToast('기존 작품을 DB로 옮기지 못했습니다. 작가 스튜디오에서 다시 저장해 주세요.');
         }
       } catch {
@@ -682,7 +713,7 @@ export default function WebtoonStudioPage() {
         setCurrentUser(found);
         setIsAdminReview(false);
         if (found.role === 'creator') {
-          const saved = await syncCreatorWorks(works, found.id).catch(() => false);
+          const saved = await syncCreatorWorks(works, found.id, true).catch(() => false);
           if (!saved) showToast('기존 작품을 DB로 옮기지 못했습니다. 작가 스튜디오에서 다시 저장해 주세요.');
         }
         setEmailInput('');
@@ -731,7 +762,7 @@ export default function WebtoonStudioPage() {
       title: newWorkTitle.trim(),
       authorName: currentUser.displayName,
       authorId: currentUser.id,
-      genre: newWorkGenre.join(' · '),
+      genre: newWorkGenre.join(' · ') || '드라마',
       synopsis:
         newWorkSynopsis.trim() ||
         `${currentUser.displayName} 작가의 오리지널 연재 웹툰입니다.`,
@@ -1136,6 +1167,32 @@ export default function WebtoonStudioPage() {
   const myWorksList = currentUser
     ? works.filter((w) => w.authorId === currentUser.id)
     : [];
+
+  const genreWork = myWorksList.find((work) => work.id === genreWorkId);
+
+  const saveWorkGenre = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!genreWork || currentUser?.role !== 'creator' || savingGenre || !editedGenres.length) return;
+    setSavingGenre(true);
+    try {
+      const response = await fetch('/api/creator/works', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: genreWork.id, genres: editedGenres }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '장르를 저장하지 못했습니다.');
+      setWorks((previous) => previous.map((work) =>
+        work.id === genreWork.id ? { ...work, genre: data.genre } : work
+      ));
+      setCatalogGenre('all');
+      showToast('작품 장르를 저장했습니다.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '장르를 저장하지 못했습니다.');
+    } finally {
+      setSavingGenre(false);
+    }
+  };
 
   const isLoggedIn = Boolean(currentUser || isAdminReview);
   const catalogGenres = Array.from(new Set(
@@ -2185,6 +2242,35 @@ export default function WebtoonStudioPage() {
                         </button>
                       </div>
 
+                      {creatorSubTab === 'newWork' && currentUser?.role === 'creator' && myWorksList.length > 0 && (
+                        <form onSubmit={saveWorkGenre} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4">
+                          <h3 className="text-sm font-bold text-white">내 작품 장르 수정</h3>
+                          <fieldset disabled={savingGenre} className="space-y-3">
+                            <select aria-label="수정할 작품" value={genreWork?.id ?? ''}
+                              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                              onChange={(event) => {
+                                const work = myWorksList.find((item) => item.id === event.target.value);
+                                setGenreWorkId(work?.id ?? '');
+                                setEditedGenres(Array.from(new Set(getWorkGenres(work?.genre ?? '')))
+                                  .filter((genre) => WORK_GENRES.includes(genre)).slice(0, 2));
+                              }}>
+                              <option value="">수정할 작품 선택</option>
+                              {myWorksList.map((work) => <option key={work.id} value={work.id}>{work.title}</option>)}
+                            </select>
+                            {genreWork && (
+                              <>
+                                <p className="text-xs text-slate-400">현재 장르 {genreWork.genre}</p>
+                                {renderGenrePicker(editedGenres, setEditedGenres)}
+                                <button type="submit" disabled={!editedGenres.length}
+                                  className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-40">
+                                  {savingGenre ? '저장 중…' : '장르 저장'}
+                                </button>
+                              </>
+                            )}
+                          </fieldset>
+                        </form>
+                      )}
+
                       {/* 서브탭 1: 새 작품 등록 */}
                       {creatorSubTab === 'newWork' && (
                         <form
@@ -2209,31 +2295,7 @@ export default function WebtoonStudioPage() {
                           </div>
                           <div className="grid sm:grid-cols-2 gap-3">
                             <div>
-                              <fieldset>
-                                <legend className="mb-2 text-xs text-slate-300">장르 선택 (최대 2개)</legend>
-                                <div className="flex flex-wrap gap-2">
-                                  {WORK_GENRES.map((genre) => {
-                                    const selected = newWorkGenre.includes(genre);
-                                    return (
-                                      <button
-                                        key={genre}
-                                        type="button"
-                                        aria-pressed={selected}
-                                        disabled={selected ? newWorkGenre.length === 1 : newWorkGenre.length >= 2}
-                                        onClick={() => setNewWorkGenre((previous) => {
-                                          if (previous.includes(genre)) return previous.length > 1 ? previous.filter((item) => item !== genre) : previous;
-                                          return previous.length < 2 ? [...previous, genre] : previous;
-                                        })}
-                                        className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected
-                                          ? 'border-amber-400 bg-amber-400 text-slate-950'
-                                          : 'border-slate-700 text-slate-200 disabled:opacity-40'}`}
-                                      >
-                                        {genre}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </fieldset>
+                              {renderGenrePicker(newWorkGenre, setNewWorkGenre)}
                             </div>
                             <div>
                               <label className="block text-xs text-slate-300 mb-1">
