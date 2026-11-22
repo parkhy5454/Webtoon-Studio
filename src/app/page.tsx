@@ -70,6 +70,7 @@ interface UserAccount {
 }
 
 interface LibraryEntry { workId: string; saved: boolean; episode: number | null; }
+interface SettlementReport { workId: string; referralLimit: number; referralUses: number; paidReaders: number; pendingFees: number; creatorShare: string; }
 interface WorkStats { workId: string; firstReaders: number; secondReaders: number; saves: number; }
 
 interface WebtoonWork {
@@ -238,6 +239,11 @@ const EMPTY_WORK: WebtoonWork = {
   synopsis: '', coverImg: '', subscribers: 0, episodes: [],
 };
 
+const hidePaidCuts = (work: WebtoonWork) => ({
+  ...work,
+  episodes: work.episodes.map((episode) => episode.num > 5 ? { ...episode, cuts: [] } : episode),
+});
+
 const isCatalogWork = (work: WebtoonWork) => work.id !== 'work-dalbit';
 
 const STORAGE_KEYS = {
@@ -253,6 +259,14 @@ export default function WebtoonStudioPage() {
   // 다중 작품(공유 플랫폼) 상태
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [workStats, setWorkStats] = useState<WorkStats[]>([]);
+  const [paymentPlan, setPaymentPlan] = useState({ enabled: false, paidWorks: [] as string[] });
+  const [settlementReports, setSettlementReports] = useState<SettlementReport[]>([]);
+  const [referralWorkId, setReferralWorkId] = useState('');
+  const [monthlyReferralLimit, setMonthlyReferralLimit] = useState('0');
+  const [feePaymentId, setFeePaymentId] = useState('');
+  const [feeAmount, setFeeAmount] = useState('');
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState('');
   const [savedOnly, setSavedOnly] = useState(false);
   const [works, setWorks] = useState<WebtoonWork[]>([]);
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
@@ -370,7 +384,9 @@ export default function WebtoonStudioPage() {
     return () => controller.abort();
   }, [activeTab, inviteUserId]);
   const inviteTerms = '친구가 가입 후 첫 결제를 완료하면, 두 사람 모두 참여 작품 1편을 30일간 무료로 감상할 수 있어요.';
-  const inviteNotice = '초대 링크로 가입하면 추천이 기록됩니다. 무료 감상 보상은 결제 연동 후 시작됩니다.';
+  const inviteNotice = paymentPlan.enabled
+    ? '초대받은 친구의 첫 결제가 확인되면 무료 이용권이 지급됩니다.'
+    : '초대 링크로 가입하면 추천이 기록됩니다. 무료 감상 보상은 결제 연동 후 시작됩니다.';
   const getInviteMessage = () =>
     ['웹툰스튜디오 친구 초대', inviteTerms, inviteNotice, ownInvite?.url ?? ''].join('\n');
 
@@ -407,7 +423,7 @@ export default function WebtoonStudioPage() {
         const parsedCustom: WebtoonWork[] = JSON.parse(savedWorks);
         if (Array.isArray(parsedCustom) && parsedCustom.length > 0) {
           localCustomWorks = parsedCustom.filter(isCatalogWork);
-          setWorks(localCustomWorks);
+          setWorks(localCustomWorks.map(hidePaidCuts));
         }
       }
     } catch {
@@ -453,16 +469,7 @@ export default function WebtoonStudioPage() {
           const merged = new Map<string, WebtoonWork>();
           [...currentWorks.filter((work) => !work.isOfficial), ...databaseWorks].filter(isCatalogWork)
             .forEach((work) => merged.set(work.id, work));
-          const updatedWorks = Array.from(merged.values());
-          try {
-            localStorage.setItem(
-              STORAGE_KEYS.CUSTOM_WORKS,
-              JSON.stringify(updatedWorks.filter((work) => !work.isOfficial))
-            );
-          } catch {
-            // DB 데이터는 다음 접속 때 다시 불러옵니다.
-          }
-          return updatedWorks;
+          return Array.from(merged.values());
         });
       } catch {
         // DB에 연결할 수 없으면 로컬 작품을 그대로 표시합니다.
@@ -486,7 +493,8 @@ export default function WebtoonStudioPage() {
   const persistCustomWorks = async (updatedWorks: WebtoonWork[]) => {
     setWorks(updatedWorks);
     try {
-      const customOnly = updatedWorks.filter((w) => !w.isOfficial);
+      const customOnly = updatedWorks.filter((work) => !work.isOfficial)
+        .map((work) => work.authorId === currentUser?.id ? work : hidePaidCuts(work));
       localStorage.setItem(STORAGE_KEYS.CUSTOM_WORKS, JSON.stringify(customOnly));
     } catch {
       showToast('브라우저 저장 공간이 부족합니다.');
@@ -573,7 +581,7 @@ export default function WebtoonStudioPage() {
   // 열람 가능 여부 (1~5화 무료, 멤버십/관리자 검수 또는 본인 작품일 때 열람 가능)
   const canAccessEpisode = (work: WebtoonWork, epNum: number) => {
     if (epNum <= 5) return true;
-    if (isAdminLoggedIn) return true;
+    if (isAdminLoggedIn || paymentPlan.paidWorks.includes(work.id)) return true;
     if (currentUser && work.authorId === currentUser.id) return true;
     return false;
   };
@@ -674,6 +682,152 @@ export default function WebtoonStudioPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeTab, readerDirection, isCurrentAccessible, viewerImageCuts.length]);
 
+  const purchaseUserId = currentUser?.role !== 'admin' ? currentUser?.id : undefined;
+  const refreshPaymentPlan = async () => {
+    const response = await fetch('/api/payments/portone', { cache: 'no-store' });
+    if (response.ok) {
+      const plan = await response.json();
+      setPaymentPlan({ enabled: plan.enabled, paidWorks: plan.paidWorks });
+    }
+  };
+
+  const confirmPayment = async (paymentId: string) => {
+    const response = await fetch('/api/payments/portone', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'confirm', paymentId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '결제 내역을 확인하지 못했습니다.');
+    await refreshPaymentPlan();
+    const catalog = await fetch('/api/creator/works', { cache: 'no-store' });
+    if (catalog.ok) {
+      const { works: updated } = await catalog.json();
+      if (Array.isArray(updated)) setWorks(updated.filter(isCatalogWork));
+    }
+    setPaymentMessage(data.status === 'PAID' ? '결제가 확인되었습니다. 구매한 작품을 읽을 수 있습니다.'
+      : data.status === 'PENDING' ? '결제 확인 중입니다. 잠시 후 이용권 상태를 확인해 주세요.'
+      : '결제 상태를 확인했습니다.');
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setPaymentPlan({ enabled: false, paidWorks: [] });
+    void fetch('/api/payments/portone', { cache: 'no-store' }).then(async (response) => {
+      if (!response.ok || cancelled) return;
+      const plan = await response.json();
+      if (!cancelled) setPaymentPlan({ enabled: plan.enabled, paidWorks: plan.paidWorks });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [purchaseUserId, activeTab]);
+
+  useEffect(() => {
+    if (!purchaseUserId) return;
+    const url = new URL(window.location.href);
+    const id = url.searchParams.get('paymentId');
+    if (!id?.startsWith('workpass-')) return;
+    setActiveTab('membership');
+    url.searchParams.delete('paymentId');
+    url.searchParams.delete('code');
+    url.searchParams.delete('message');
+    window.history.replaceState(null, '', url);
+    void confirmPayment(id).catch(() => setPaymentMessage('결제를 확인하지 못했습니다. 잠시 뒤 이용권을 다시 확인해 주세요.'));
+  }, [purchaseUserId]);
+
+  const loadSettlement = async (signal?: AbortSignal) => {
+    const response = await fetch('/api/creator/settlement', { cache: 'no-store', signal });
+    if (response.ok && !signal?.aborted) {
+      const data = await response.json();
+      if (!signal?.aborted) setSettlementReports(data.reports);
+    }
+  };
+
+  useEffect(() => {
+    setSettlementReports([]);
+    if (currentUser?.role !== 'creator' || activeTab !== 'settings' || creatorSubTab !== 'settlement') return;
+    const controller = new AbortController();
+    void loadSettlement(controller.signal).catch(() => undefined);
+    return () => controller.abort();
+  }, [currentUser?.id, currentUser?.role, activeTab, creatorSubTab]);
+
+  const updateReferralProgram = async (workId: string, monthlyLimit: number) => {
+    try {
+      const response = await fetch('/api/referrals/redeem', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'configure', workId, monthlyLimit }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? '참여 설정을 저장하지 못했습니다.');
+      await loadSettlement();
+      showToast('무료 이용권 참여 설정을 저장했습니다.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '설정을 저장하지 못했습니다.');
+    }
+  };
+
+  const redeemWorkPass = async (workId: string) => {
+    if (!purchaseUserId || paymentBusy) return;
+    setPaymentBusy(true);
+    setPaymentMessage('');
+    try {
+      const response = await fetch('/api/referrals/redeem', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'redeem', workId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? '무료 이용권을 사용할 수 없습니다.');
+      await refreshPaymentPlan();
+      const catalog = await fetch('/api/creator/works', { cache: 'no-store' });
+      if (catalog.ok) {
+        const { works: updated } = await catalog.json();
+        if (Array.isArray(updated)) setWorks(updated.filter(isCatalogWork));
+      }
+      setPaymentMessage('참여 작품 무료 이용권을 사용했습니다. 지금부터 30일간 읽을 수 있습니다.');
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : '무료 이용권을 사용할 수 없습니다.');
+    } finally {
+      setPaymentBusy(false);
+    }
+  };
+
+  const recordPaymentFee = async () => {
+    try {
+      const response = await fetch('/api/creator/settlement', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId: feePaymentId.trim(), fees: Number(feeAmount) }),
+      });
+      if (!response.ok) throw new Error();
+      setFeePaymentId('');
+      setFeeAmount('');
+      showToast('실제 수수료를 기록했습니다.');
+    } catch {
+      showToast('결제 번호와 실제 수수료를 확인해 주세요.');
+    }
+  };
+
+  const buyWorkPass = async (workId: string) => {
+    if (!purchaseUserId || paymentBusy) return;
+    setPaymentBusy(true);
+    setPaymentMessage('');
+    try {
+      const response = await fetch('/api/payments/portone', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start', workId }),
+      });
+      const order = await response.json();
+      if (!response.ok) throw new Error(order.error || '주문을 시작하지 못했습니다.');
+      const { requestPayment } = await import('@portone/browser-sdk/v2');
+      const redirect = new URL('/', window.location.origin);
+      redirect.searchParams.set('work', workId);
+      const payment = await requestPayment({ ...order, redirectUrl: redirect.toString(), customer: { email: currentUser?.email, fullName: currentUser?.displayName } });
+      if (payment?.code) throw new Error('결제가 완료되지 않았습니다.');
+      if (payment?.paymentId) await confirmPayment(payment.paymentId);
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : '결제에 실패했습니다.');
+    } finally {
+      setPaymentBusy(false);
+    }
+  };
+
   const shareWork = async (workId: string, episode = 1) => {
     const url = new URL('/', window.location.origin);
     url.searchParams.set('work', workId);
@@ -706,8 +860,8 @@ export default function WebtoonStudioPage() {
       return;
     }
     setCurrentUser(null);
-    setWorks((items) => items.map((work) => ({ ...work, episodes: work.episodes.map((episode) =>
-      episode.num > 5 ? { ...episode, cuts: [] } : episode) })));
+    setPaymentPlan({ enabled: false, paidWorks: [] });
+    setWorks((items) => items.map(hidePaidCuts));
     setShowAdminPanel(false);
     showToast('로그아웃되었습니다.');
   };
@@ -1964,6 +2118,10 @@ export default function WebtoonStudioPage() {
                     <p className="col-span-3 text-center text-xs text-slate-400">아직 공개된 다음 화가 없습니다.</p>
                   )}
                 </div>
+                <button type="button" onClick={() => void shareWork(currentWork.id, currentEpisode.num)}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200">
+                  이 회차 공유
+                </button>
               </>
             ) : (
               <div className="p-8 sm:p-10 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 text-center space-y-5">
@@ -2006,7 +2164,25 @@ export default function WebtoonStudioPage() {
             {currentWork.id && <p className="text-sm font-semibold text-slate-200">{currentWork.title}</p>}
             <p className="text-2xl font-bold text-amber-400">2,900원 <span className="text-sm text-slate-300">/ 30일</span></p>
             <p className="text-sm text-slate-300">1~5화 무료 · 이용권 구매 시 선택한 작품의 6화부터 열람 · 자동 갱신 없음</p>
-            <p role="status" className="text-sm font-semibold text-slate-400">결제 준비 중</p>
+            {paymentPlan.paidWorks.includes(currentWork.id) ? (
+              <button type="button" onClick={() => handleSelectWorkAndEpisode(currentWork.id, 6)}
+                className="rounded-lg bg-amber-400 px-4 py-2 font-bold text-slate-950">구매한 작품 보기</button>
+            ) : paymentPlan.enabled && currentWork.episodes.some((episode) => episode.num > 5) ? (
+              <button type="button" disabled={paymentBusy} onClick={() => {
+                if (purchaseUserId) void buyWorkPass(currentWork.id);
+                else { setAuthMode('login'); setActiveTab('settings'); }
+              }} className="rounded-lg bg-amber-400 px-4 py-2 font-bold text-slate-950 disabled:opacity-50">
+                {paymentBusy ? '결제 처리 중…' : purchaseUserId ? '작품 이용권 구매' : '로그인 후 구매'}
+              </button>
+            ) : <p role="status" className="text-sm font-semibold text-slate-400">결제 준비 중</p>}
+            {paymentPlan.enabled && purchaseUserId && !paymentPlan.paidWorks.includes(currentWork.id) &&
+              currentWork.episodes.some((episode) => episode.num > 5) && (
+              <button type="button" disabled={paymentBusy} onClick={() => void redeemWorkPass(currentWork.id)}
+                className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-amber-300 disabled:opacity-40">
+                이 작품에 친구 초대 보상 사용
+              </button>
+            )}
+            {paymentMessage && <p role="status" className="text-sm text-slate-200">{paymentMessage}</p>}
             <div className="space-y-2 border-t border-slate-800 pt-4">
               <p className="text-sm text-slate-200">{inviteTerms}</p>
               <button type="button" onClick={() => {
@@ -2796,27 +2972,53 @@ export default function WebtoonStudioPage() {
                               <p className="text-xs text-slate-400">로그인한 독자의 회차 진입 기준입니다.</p>
                             </div>
                           )}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                                <Users className="w-3.5 h-3.5 text-indigo-400" />내 작품 유료 이용자
-                              </span>
-                              <p className="text-lg font-extrabold text-white mt-1">
-                                집계 준비 중
-                              </p>
+                          {settlementReports.map((report) => (
+                            <div key={report.workId} className="space-y-1 rounded-lg bg-slate-900 p-3 text-xs text-slate-300">
+                              <strong className="block text-white">{works.find((work) => work.id === report.workId)?.title}</strong>
+                              <p>현재 유료 이용자 {report.paidReaders}명 · 이번 달 무료 이용권 {report.referralUses}/{report.referralLimit}건</p>
+                              <p>수수료 확인 건의 이번 달 작가 배분액 {Number(report.creatorShare).toLocaleString('ko-KR')}원</p>
+                              {report.pendingFees > 0 && <p>수수료 확인 대기 {report.pendingFees}건</p>}
                             </div>
-                            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                              <span className="text-[11px] text-slate-400">
-                                이번 달 예상 정산액 (작가 70%)
-                              </span>
-                              <p className="text-lg font-extrabold text-amber-300 mt-1">
-                                집계 준비 중
-                              </p>
-                            </div>
-                          </div>
-                          <p className="text-[11px] text-slate-400 leading-relaxed">
-                            PG 연동 후 작품별 실제 결제액에서 환불액과 카드·PG 수수료를 공제한 금액을 기준으로 집계합니다.
-                          </p>
+                          ))}
+                          {currentUser?.role === 'creator' && myWorksList.length > 0 && (
+                            <form className="space-y-2 rounded-lg bg-slate-900 p-3 text-sm" onSubmit={(event) => {
+                              event.preventDefault();
+                              void updateReferralProgram(referralWorkId, Number(monthlyReferralLimit));
+                            }}>
+                              <h4 className="font-bold text-white">작품별 친구 초대 이용권</h4>
+                              <select aria-label="참여 작품" required value={referralWorkId}
+                                className="w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-2"
+                                onChange={(event) => {
+                                  const workId = event.target.value;
+                                  setReferralWorkId(workId);
+                                  setMonthlyReferralLimit(String(settlementReports.find((report) => report.workId === workId)?.referralLimit ?? 0));
+                                }}>
+                                <option value="">참여 작품 선택</option>
+                                {myWorksList.map((work) => <option key={work.id} value={work.id}>{work.title}</option>)}
+                              </select>
+                              <label className="block text-xs text-slate-300">월 제공 한도 (0이면 신규 제공 중지)
+                                <input required type="number" min="0" max="500" value={monthlyReferralLimit}
+                                  onChange={(event) => setMonthlyReferralLimit(event.target.value)}
+                                  className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950 p-2" />
+                              </label>
+                              <button className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-slate-950">참여 설정 저장</button>
+                            </form>
+                          )}
+                          {isAdminLoggedIn && (
+                            <form className="space-y-2 rounded-lg bg-slate-900 p-3 text-sm" onSubmit={(event) => {
+                              event.preventDefault();
+                              void recordPaymentFee();
+                            }}>
+                              <h4 className="font-bold text-white">PG 명세서 수수료 기록</h4>
+                              <input aria-label="결제 번호" placeholder="결제 번호" required value={feePaymentId}
+                                onChange={(event) => setFeePaymentId(event.target.value)}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" />
+                              <input aria-label="실제 수수료" placeholder="실제 수수료 (원)" required type="number" min="0" value={feeAmount}
+                                onChange={(event) => setFeeAmount(event.target.value)}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" />
+                              <button className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-slate-950">수수료 저장</button>
+                            </form>
+                          )}
                           <aside className="space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-4 text-xs leading-relaxed text-slate-300">
                             <h4 className="font-bold text-white">친구 초대 무료 이용권 사전 안내</h4>
                             <p>친구가 가입 후 첫 결제를 완료하면 초대한 사람과 친구가 각각 참여 작품 한 편을 30일간 볼 수 있는 이용권을 받습니다.</p>
@@ -2825,7 +3027,7 @@ export default function WebtoonStudioPage() {
                               <li>무료 이용권 사용 건의 작가 정산액은 0원입니다. 유료 판매 정산액에서 별도로 차감하지 않습니다.</li>
                               <li>추천 이용권 사용 건수는 유료 판매 건수와 구분해 표시할 예정입니다.</li>
                             </ul>
-                            <p className="text-amber-300">PG 연동 후 시작 예정입니다. 현재 참여 신청과 이용권 지급은 준비 중입니다.</p>
+                            {!paymentPlan.enabled && <p className="text-amber-300">무료 이용권 지급은 PG 운영 채널 연결 후 시작됩니다.</p>}
                           </aside>
                         </div>
                       )}

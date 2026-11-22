@@ -1,5 +1,7 @@
+import { getReferralWorks } from '@/lib/referral-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql, hasDatabaseUrl } from '@/lib/db';
+import { getPaidWorks } from '@/lib/work-payments';
 import { getAdminSession } from '@/lib/admin-auth';
 import { ensureAuthSchema, getSessionUser } from '@/lib/auth';
 
@@ -16,6 +18,7 @@ export async function GET(
     const sql = getSql();
     const admin = getAdminSession(request);
     const user = admin ? null : await getSessionUser(request);
+    const paidWorks = JSON.stringify(user ? [...await getPaidWorks(user.id), ...await getReferralWorks(user.id)] : []);
     const imageUrl = JSON.stringify(`/api/uploads/${id}`);
     const rows = await sql`
       SELECT asset.content_type, asset.data_base64 FROM webtoon_assets asset
@@ -25,7 +28,10 @@ export async function GET(
           SELECT 1 FROM webtoon_creator_works work
           WHERE work.author_id = asset.uploader_user_id AND (
             work.payload->'coverImg' = ${imageUrl}::jsonb OR
-            jsonb_path_exists(work.payload, '$.episodes[*] ? (@.num >= 1 && @.num <= 5).cuts[*] ? (@.img == $image)', jsonb_build_object('image', ${imageUrl}::jsonb), true)
+            jsonb_path_exists(work.payload, '$.episodes[*] ? (@.num >= 1 && @.num <= 5).cuts[*] ? (@.img == $image)', jsonb_build_object('image', ${imageUrl}::jsonb), true) OR (
+              ${paidWorks}::jsonb ? work.id AND
+              jsonb_path_exists(work.payload, '$.episodes[*].cuts[*] ? (@.img == $image)', jsonb_build_object('image', ${imageUrl}::jsonb), true)
+            )
           )
         )
       )

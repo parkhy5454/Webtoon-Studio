@@ -1,7 +1,9 @@
+import { getReferralWorks } from '@/lib/referral-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql, hasDatabaseUrl } from '@/lib/db';
 import { ensureAuthSchema, getSessionUser } from '@/lib/auth';
 
+import { getPaidWorks } from '@/lib/work-payments';
 import { getAdminSession } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
@@ -22,8 +24,9 @@ export async function GET(request: NextRequest) {
     const rows = await sql`
       SELECT author_id, payload FROM webtoon_creator_works ORDER BY created_at ASC
     `;
+    const paidWorks = new Set(user ? [...await getPaidWorks(user.id), ...await getReferralWorks(user.id)] : []);
     const works = rows.map(({ author_id, payload }) => {
-      if (admin || user?.id === author_id || !Array.isArray(payload?.episodes)) return payload;
+      if (admin || user?.id === author_id || paidWorks.has(payload?.id) || !Array.isArray(payload?.episodes)) return payload;
       return {
         ...payload,
         episodes: payload.episodes.map((episode: Record<string, unknown>) => ({

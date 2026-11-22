@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser, ensureAuthSchema } from '@/lib/auth';
+import { getPaidWorks } from '@/lib/work-payments';
+import { getReferralWorks } from '@/lib/referral-access';
 import { getSql } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -70,6 +72,8 @@ export async function POST(request: NextRequest) {
     }
     await ensureLibrarySchema();
     const sql = getSql();
+    const unlocked = episode !== null && episode > 5
+      && ([...await getPaidWorks(user.id), ...await getReferralWorks(user.id)]).includes(workId);
     const [entry] = await sql`
       INSERT INTO webtoon_reader_library (user_id, work_id, saved, last_episode, read_first, read_second)
       SELECT ${user.id}, w.id, COALESCE(${saved}::boolean, FALSE), ${episode}::int,
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
       FROM webtoon_creator_works w
       WHERE w.id = ${workId} AND (
         ${episode}::int IS NULL OR (
-          (${episode}::int <= 5 OR w.author_id = ${user.id}) AND
+          (${episode}::int <= 5 OR ${unlocked}::boolean OR w.author_id = ${user.id}) AND
           jsonb_path_exists(w.payload, '$.episodes[*] ? (@.num == $number)', jsonb_build_object('number', ${episode}::int), true)
         )
       )
