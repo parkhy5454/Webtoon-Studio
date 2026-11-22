@@ -193,6 +193,8 @@ const checkImageUrl = (url: string): Promise<boolean> =>
     image.src = url;
   });
 
+type CatalogSort = 'latest' | 'popular' | 'title-asc' | 'title-desc';
+
 const WORK_GENRES = ['로맨스', '로맨스판타지', '판타지', '액션', '미스터리·추리', '스릴러', '코미디', 'SF', '시대극', '드라마', '일상', '기업'];
 const getWorkGenres = (genre: string) =>
   genre.replace(/미스터리\s*·\s*추리/g, '미스터리 추리')
@@ -257,7 +259,7 @@ export default function WebtoonStudioPage() {
   const readerTouchStart = useRef<{ x: number; y: number } | null>(null);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogGenre, setCatalogGenre] = useState('all');
-  const [catalogSort, setCatalogSort] = useState<'latest' | 'popular'>('latest');
+  const [catalogSort, setCatalogSort] = useState<CatalogSort>('latest');
   const [catalogWorkId, setCatalogWorkId] = useState<string | null>(null);
 
   // 멤버십 & 관리자 검수 모드 상태 (기본 화면에서는 비공개)
@@ -1213,6 +1215,8 @@ export default function WebtoonStudioPage() {
       (catalogGenre === 'all' || getWorkGenres(work.genre).includes(catalogGenre));
   }).sort((a, b) => {
     if (catalogSort === 'popular') return (b.subscribers || 0) - (a.subscribers || 0);
+    if (catalogSort === 'title-asc') return a.title.localeCompare(b.title, 'ko', { numeric: true });
+    if (catalogSort === 'title-desc') return b.title.localeCompare(a.title, 'ko', { numeric: true });
     const aRegistered = Number(a.id.match(/^work-(\d+)$/)?.[1] || 0);
     const bRegistered = Number(b.id.match(/^work-(\d+)$/)?.[1] || 0);
     return bRegistered - aRegistered || works.indexOf(b) - works.indexOf(a);
@@ -1488,10 +1492,12 @@ export default function WebtoonStudioPage() {
                     {catalogGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
                   </select>
                   <select aria-label="작품 정렬" value={catalogSort}
-                    onChange={(event) => setCatalogSort(event.target.value as 'latest' | 'popular')}
+                    onChange={(event) => setCatalogSort(event.target.value as CatalogSort)}
                     className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white">
                     <option value="latest">최신 등록순</option>
                     <option value="popular">인기순</option>
+                    <option value="title-asc">제목 오름차순 (가나다순)</option>
+                    <option value="title-desc">제목 내림차순 (역가나다순)</option>
                   </select>
                 </div>
                 <p className="text-xs text-slate-400">{catalogWorks.length}편 표시</p>
