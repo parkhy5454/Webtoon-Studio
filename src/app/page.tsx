@@ -2249,8 +2249,8 @@ export default function WebtoonStudioPage() {
 
                   {/* 작가 또는 관리자 계정일 때 작가 스튜디오 노출 */}
                   {(currentUser?.role === 'creator' || isAdminLoggedIn) && (
-                    <div className="space-y-4 pt-2 border-t border-slate-800">
-                      <div className="flex items-center justify-between">
+                    <div className="min-w-0 max-w-full overflow-x-clip [overflow-wrap:anywhere] space-y-4 pt-2 border-t border-slate-800">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs font-bold text-indigo-300">
                           작가 스튜디오 · 작품 및 회차 관리
                         </span>
@@ -2301,7 +2301,7 @@ export default function WebtoonStudioPage() {
                           <h3 className="text-sm font-bold text-white">내 작품 장르 수정</h3>
                           <fieldset disabled={savingGenre} className="space-y-3">
                             <select aria-label="수정할 작품" value={genreWork?.id ?? ''}
-                              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                              className="w-full min-w-0 max-w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
                               onChange={(event) => {
                                 const work = myWorksList.find((item) => item.id === event.target.value);
                                 setGenreWorkId(work?.id ?? '');
@@ -2344,10 +2344,10 @@ export default function WebtoonStudioPage() {
                               value={newWorkTitle}
                               onChange={(e) => setNewWorkTitle(e.target.value)}
                               placeholder="예: 한강 야경의 편의점"
-                              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                              className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                             />
                           </div>
-                          <div className="grid sm:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                               {renderGenrePicker(newWorkGenre, setNewWorkGenre)}
                             </div>
@@ -2360,7 +2360,7 @@ export default function WebtoonStudioPage() {
                                 value={newWorkCover}
                                 onChange={(e) => setNewWorkCover(e.target.value)}
                                 placeholder="https://..."
-                                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                                className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                               />
                             </div>
                           </div>
@@ -2373,7 +2373,7 @@ export default function WebtoonStudioPage() {
                               value={newWorkSynopsis}
                               onChange={(e) => setNewWorkSynopsis(e.target.value)}
                               placeholder="독자들에게 보여질 작품 소개글을 입력하세요."
-                              className="w-full rounded-xl bg-slate-900 border border-slate-700 p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                              className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                             />
                           </div>
                           <button
@@ -2412,7 +2412,7 @@ export default function WebtoonStudioPage() {
                             </div>
                           ) : (
                             <>
-                              <div className="grid sm:grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                   <label className="block text-xs text-slate-300 mb-1">
                                     연재할 내 작품 선택
@@ -2420,7 +2420,7 @@ export default function WebtoonStudioPage() {
                                   <select
                                     value={targetWorkId || myWorksList[0]?.id}
                                     onChange={(e) => resetEpisodeEditor(e.target.value)}
-                                    className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
+                                    className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
                                   >
                                     {myWorksList.map((w) => (
                                       <option key={w.id} value={w.id}>
@@ -2438,7 +2438,7 @@ export default function WebtoonStudioPage() {
                                     value={newEpTitle}
                                     onChange={(e) => setNewEpTitle(e.target.value)}
                                     placeholder="예: 제 1화 - 비 오는 옥상에서"
-                                    className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                                    className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                                   />
                                 </div>
                               </div>
@@ -2450,7 +2450,7 @@ export default function WebtoonStudioPage() {
                                   onChange={(event) => event.target.value === 'new'
                                     ? resetEpisodeEditor()
                                     : loadEpisodeForEditing(Number(event.target.value))}
-                                  className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white"
+                                  className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white"
                                 >
                                   <option value="new">새 회차 등록</option>
                                   {(myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes.map((episode) => (
@@ -2528,11 +2528,11 @@ export default function WebtoonStudioPage() {
 
                               {/* 컷별 입력 리스트 */}
                               <div className="space-y-3">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                                   <span className="text-xs font-semibold text-amber-300">
                                     컷 구성 ({newEpCuts.length}컷)
                                   </span>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
                                   <button
                                     type="button"
                                     onClick={handleClearAllCuts}
@@ -2563,11 +2563,11 @@ export default function WebtoonStudioPage() {
                                     key={idx}
                                     className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5"
                                   >
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                       <span className="text-xs font-bold text-indigo-300">
                                         CUT #{idx + 1}
                                       </span>
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex flex-wrap items-center gap-2">
                                         <button type="button" disabled={idx === 0}
                                           onClick={() => moveEpisodeCut(idx, -1)}
                                           className="text-xs text-slate-300 disabled:opacity-30">위로</button>
@@ -2594,7 +2594,7 @@ export default function WebtoonStudioPage() {
                                         handleCutFieldChange(idx, 'img', e.target.value)
                                       }
                                       placeholder="컷 이미지 주소 (필수)"
-                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      className="w-full min-w-0 max-w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
                                     />
                                     {cut.img && (
                                       <div className="flex items-center gap-3 rounded-lg bg-slate-950 border border-slate-700 p-2">
@@ -2611,7 +2611,7 @@ export default function WebtoonStudioPage() {
                                             )
                                           }
                                         />
-                                        <div className="flex-1">
+                                        <div className="min-w-0 flex-1">
                                           {cutPreviewErrors.includes(idx) ? (
                                             <p className="text-xs font-semibold text-rose-300">이미지를 불러오지 못했습니다. 주소를 확인하거나 다시 업로드해 주세요.</p>
                                           ) : (
@@ -2628,7 +2628,7 @@ export default function WebtoonStudioPage() {
                                         </button>
                                       </div>
                                     )}
-                                    <div className="grid sm:grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                       <input
                                         type="text"
                                         value={cut.scene || ''}
@@ -2636,7 +2636,7 @@ export default function WebtoonStudioPage() {
                                           handleCutFieldChange(idx, 'scene', e.target.value)
                                         }
                                         placeholder="장면 설명 (예: 노을 지는 옥탑방 난간)"
-                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                        className="w-full min-w-0 max-w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
                                       />
                                       <input
                                         type="text"
@@ -2645,7 +2645,7 @@ export default function WebtoonStudioPage() {
                                           handleCutFieldChange(idx, 'sfx', e.target.value)
                                         }
                                         placeholder="효과음 SFX (예: 쏴아아-, 두근)"
-                                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                        className="w-full min-w-0 max-w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
                                       />
                                     </div>
                                     <input
@@ -2655,7 +2655,7 @@ export default function WebtoonStudioPage() {
                                         handleCutFieldChange(idx, 'narration', e.target.value)
                                       }
                                       placeholder="내레이션 (독백/지문)"
-                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      className="w-full min-w-0 max-w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
                                     />
                                     <input
                                       type="text"
@@ -2664,7 +2664,7 @@ export default function WebtoonStudioPage() {
                                         handleCutFieldChange(idx, 'dialogue', e.target.value)
                                       }
                                       placeholder="캐릭터 대사"
-                                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                                      className="w-full min-w-0 max-w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500"
                                     />
                                   </div>
                                 ))}
