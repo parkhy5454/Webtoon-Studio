@@ -199,6 +199,9 @@ export default function WebtoonStudioPage() {
   const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
   const [readerDirection, setReaderDirection] = useState<'vertical' | 'horizontal'>('vertical');
   const [readerCutIndex, setReaderCutIndex] = useState(0);
+  const [visibleReaderCut, setVisibleReaderCut] = useState<{ episode: string; index: number; src: string } | null>(null);
+  const [readerLoadFailed, setReaderLoadFailed] = useState('');
+  const [readerRetry, setReaderRetry] = useState(0);
   const readerTouchStart = useRef<{ x: number; y: number } | null>(null);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogGenre, setCatalogGenre] = useState('all');
@@ -466,6 +469,23 @@ export default function WebtoonStudioPage() {
   );
 
   const activeReaderCut = Math.min(readerCutIndex, Math.max(0, viewerImageCuts.length - 1));
+  const readerEpisodeKey = JSON.stringify([currentWork.id, currentEpisode.num]);
+  const requestedReaderSrc = viewerImageCuts[activeReaderCut]?.img;
+  const nextReaderSrc = viewerImageCuts[activeReaderCut + 1]?.img;
+  const previousReaderSrc = viewerImageCuts[activeReaderCut - 1]?.img;
+  const visibleCut = visibleReaderCut?.episode === readerEpisodeKey ? visibleReaderCut : null;
+  const requestedCutReady = visibleCut?.index === activeReaderCut && visibleCut?.src === requestedReaderSrc;
+  const readerRequestKey = JSON.stringify([readerEpisodeKey, activeReaderCut, requestedReaderSrc, readerRetry]);
+
+  useEffect(() => {
+    if (activeTab !== 'viewer' || readerDirection !== 'horizontal' || !isCurrentAccessible) return;
+    for (const src of [nextReaderSrc, previousReaderSrc]) {
+      if (!src) continue;
+      const image = new Image();
+      image.src = src;
+      void image.decode().catch(() => undefined);
+    }
+  }, [activeTab, readerDirection, isCurrentAccessible, nextReaderSrc, previousReaderSrc]);
 
   useEffect(() => {
     setReaderCutIndex(0);
@@ -1625,21 +1645,53 @@ export default function WebtoonStudioPage() {
                         ));
                       }}
                     >
-                      <img
-                        key={`${currentWork.id}-${currentEpisode.num}-horizontal-${activeReaderCut}`}
-                        src={viewerImageCuts[activeReaderCut].img}
-                        alt={`제 ${currentEpisode.num}화 ${activeReaderCut + 1}번째 이미지`}
-                        draggable={false}
-                        className="block w-full h-auto select-none"
-                      />
+                      {visibleCut && (
+                        <img
+                          src={visibleCut.src}
+                          alt={`제 ${currentEpisode.num}화 ${visibleCut.index + 1}번째 이미지`}
+                          draggable={false}
+                          className="block w-full h-auto select-none"
+                        />
+                      )}
+                      {!requestedCutReady && requestedReaderSrc && (
+                        <img
+                          key={readerRequestKey}
+                          src={requestedReaderSrc}
+                          alt=""
+                          aria-hidden="true"
+                          className="absolute w-px h-px opacity-0 pointer-events-none"
+                          onLoad={async (event) => {
+                            const image = event.currentTarget;
+                            try {
+                              await image.decode();
+                              if (image.isConnected) {
+                                setVisibleReaderCut({ episode: readerEpisodeKey, index: activeReaderCut, src: requestedReaderSrc });
+                              }
+                            } catch {
+                              if (image.isConnected) setReaderLoadFailed(readerRequestKey);
+                            }
+                          }}
+                          onError={() => setReaderLoadFailed(readerRequestKey)}
+                        />
+                      )}
+                      {!visibleCut && readerLoadFailed !== readerRequestKey && (
+                        <p role="status" className="py-10 text-sm text-slate-400">컷을 불러오는 중…</p>
+                      )}
                     </div>
+                    {!requestedCutReady && readerLoadFailed === readerRequestKey && (
+                      <p role="status" className="text-center text-sm text-slate-300">
+                        컷을 불러오지 못했습니다.{' '}
+                        <button type="button" onClick={() => setReaderRetry((value) => value + 1)}
+                          className="text-amber-300 underline">다시 시도</button>
+                      </p>
+                    )}
                     <div className="flex items-center justify-between gap-3">
                       <button type="button" disabled={activeReaderCut === 0}
                         onClick={() => setReaderCutIndex(Math.max(0, activeReaderCut - 1))}
                         className="px-4 py-2 rounded-lg bg-slate-800 text-sm text-white disabled:opacity-30"
                         aria-label="이전 컷">← 이전 컷</button>
                       <span className="text-xs text-slate-400" aria-live="polite">
-                        {activeReaderCut + 1} / {viewerImageCuts.length}
+                        {visibleCut ? visibleCut.index + 1 : '–'} / {viewerImageCuts.length}
                       </span>
                       <button type="button" disabled={activeReaderCut >= viewerImageCuts.length - 1}
                         onClick={() => setReaderCutIndex(Math.min(viewerImageCuts.length - 1, activeReaderCut + 1))}
