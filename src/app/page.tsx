@@ -131,6 +131,13 @@ const checkImageUrl = (url: string): Promise<boolean> =>
     image.src = url;
   });
 
+const WORK_GENRES = ['로맨스', '로맨스판타지', '판타지', '액션', '미스터리·추리', '스릴러', '코미디', 'SF', '시대극', '드라마', '일상'];
+const getWorkGenres = (genre: string) =>
+  genre.replace(/미스터리\s*·\s*추리/g, '미스터리 추리')
+    .split(/[·,\/]/)
+    .map((item) => item.trim().replace(/^미스터리 추리$/, '미스터리·추리'))
+    .filter(Boolean);
+
 const EMPTY_WORK: WebtoonWork = {
   id: '', title: '', authorId: '', authorName: '', genre: '',
   synopsis: '', coverImg: '', subscribers: 0, episodes: [],
@@ -183,7 +190,7 @@ export default function WebtoonStudioPage() {
   // 작가 작품 등록 & 회차 업로드 폼 상태
   const [creatorSubTab, setCreatorSubTab] = useState<'newWork' | 'newEpisode' | 'settlement'>('newWork');
   const [newWorkTitle, setNewWorkTitle] = useState<string>('');
-  const [newWorkGenre, setNewWorkGenre] = useState<string>('드라마 · 일상');
+  const [newWorkGenre, setNewWorkGenre] = useState<string[]>(['드라마']);
   const [newWorkSynopsis, setNewWorkSynopsis] = useState<string>('');
   const [newWorkCover, setNewWorkCover] = useState<string>('');
 
@@ -654,7 +661,7 @@ export default function WebtoonStudioPage() {
       title: newWorkTitle.trim(),
       authorName: currentUser.displayName,
       authorId: currentUser.id,
-      genre: newWorkGenre.trim() || '드라마',
+      genre: newWorkGenre.join(' · '),
       synopsis:
         newWorkSynopsis.trim() ||
         `${currentUser.displayName} 작가의 오리지널 연재 웹툰입니다.`,
@@ -1037,13 +1044,13 @@ export default function WebtoonStudioPage() {
 
   const isLoggedIn = Boolean(currentUser || isAdminReview);
   const catalogGenres = Array.from(new Set(
-    works.flatMap((work) => work.genre.split(/[·,/]/).map((genre) => genre.trim()).filter(Boolean))
+    works.flatMap((work) => getWorkGenres(work.genre))
   )).sort((a, b) => a.localeCompare(b, 'ko'));
   const catalogWorks = works.filter((work) => {
     const query = catalogQuery.trim().toLocaleLowerCase();
     return (!query || [work.title, work.authorName, work.genre, work.synopsis]
       .some((value) => value.toLocaleLowerCase().includes(query))) &&
-      (catalogGenre === 'all' || work.genre.split(/[·,/]/).some((genre) => genre.trim() === catalogGenre));
+      (catalogGenre === 'all' || getWorkGenres(work.genre).includes(catalogGenre));
   }).sort((a, b) => {
     if (catalogSort === 'popular') return (b.subscribers || 0) - (a.subscribers || 0);
     const aRegistered = Number(a.id.match(/^work-(\d+)$/)?.[1] || 0);
@@ -2098,14 +2105,31 @@ export default function WebtoonStudioPage() {
                           </div>
                           <div className="grid sm:grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-xs text-slate-300 mb-1">장르</label>
-                              <input
-                                type="text"
-                                value={newWorkGenre}
-                                onChange={(e) => setNewWorkGenre(e.target.value)}
-                                placeholder="로맨스 · 판타지 · 일상"
-                                className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                              />
+                              <fieldset>
+                                <legend className="mb-2 text-xs text-slate-300">장르 선택 (최대 2개)</legend>
+                                <div className="flex flex-wrap gap-2">
+                                  {WORK_GENRES.map((genre) => {
+                                    const selected = newWorkGenre.includes(genre);
+                                    return (
+                                      <button
+                                        key={genre}
+                                        type="button"
+                                        aria-pressed={selected}
+                                        disabled={selected ? newWorkGenre.length === 1 : newWorkGenre.length >= 2}
+                                        onClick={() => setNewWorkGenre((previous) => {
+                                          if (previous.includes(genre)) return previous.length > 1 ? previous.filter((item) => item !== genre) : previous;
+                                          return previous.length < 2 ? [...previous, genre] : previous;
+                                        })}
+                                        className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected
+                                          ? 'border-amber-400 bg-amber-400 text-slate-950'
+                                          : 'border-slate-700 text-slate-200 disabled:opacity-40'}`}
+                                      >
+                                        {genre}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </fieldset>
                             </div>
                             <div>
                               <label className="block text-xs text-slate-300 mb-1">
