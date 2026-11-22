@@ -1210,9 +1210,9 @@ export default function WebtoonStudioPage() {
                 <div className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center text-amber-400">
                   <Award className="w-5 h-5" />
                 </div>
-                <h2 className="text-sm sm:text-base font-bold text-white">투명한 작가 5 : 5 정산</h2>
+                <h2 className="text-sm sm:text-base font-bold text-white">작가 70% · 플랫폼 30% 정산</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  작품별 유료 이용권 수익은 작가와 플랫폼이 50%씩 배분합니다.
+                  작품별 이용권 결제액에서 환불액과 카드·PG 수수료를 뺀 뒤 작가 70%, 플랫폼 30%로 배분합니다.
                 </p>
               </div>
             </div>
@@ -1420,7 +1420,7 @@ export default function WebtoonStudioPage() {
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
                   <div className="text-[11px] text-slate-400 mb-0.5">수익 배분</div>
-                  <div className="text-sm sm:text-base font-bold text-amber-300">작가 5 : 5</div>
+                  <div className="text-sm sm:text-base font-bold text-amber-300">작가 70% · 플랫폼 30%</div>
                 </div>
               </div>
 
@@ -2049,7 +2049,7 @@ export default function WebtoonStudioPage() {
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
-                          3. 5:5 수익 정산
+                          3. 수익 정산
                         </button>
                       </div>
 
@@ -2409,12 +2409,12 @@ export default function WebtoonStudioPage() {
                         </form>
                       )}
 
-                      {/* 서브탭 3: 작가 4 : 플랫폼 6 수익 정산 */}
+                      {/* 서브탭 3: 작품별 수익 정산 */}
                       {creatorSubTab === 'settlement' && (
                         <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
                           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                             <Coins className="w-4 h-4 text-amber-400" />
-                            작품별 구독 수익 정산 현황 (작가 50% : 플랫폼 50%)
+                            작품별 구독 수익 정산 현황 (작가 70% · 플랫폼 30%)
                           </h3>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
@@ -2427,7 +2427,7 @@ export default function WebtoonStudioPage() {
                             </div>
                             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                               <span className="text-[11px] text-slate-400">
-                                이번 달 예상 정산액 (50%)
+                                이번 달 예상 정산액 (작가 70%)
                               </span>
                               <p className="text-lg font-extrabold text-amber-300 mt-1">
                                 집계 준비 중
@@ -2435,7 +2435,7 @@ export default function WebtoonStudioPage() {
                             </div>
                           </div>
                           <p className="text-[11px] text-slate-400 leading-relaxed">
-                            PG 연동 후 작품별 실제 결제·환불 내역을 기준으로 집계합니다.
+                            PG 연동 후 작품별 실제 결제액에서 환불액과 카드·PG 수수료를 공제한 금액을 기준으로 집계합니다.
                           </p>
                         </div>
                       )}
