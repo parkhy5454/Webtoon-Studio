@@ -32,7 +32,6 @@ import {
   Award,
   Zap,
 } from 'lucide-react';
-import { EPISODES_100 } from '@/lib/episodes-100';
 
 interface EpisodeCut {
   img: string;
@@ -84,41 +83,6 @@ interface WebtoonWork {
   isOfficial?: boolean;
 }
 
-const INITIAL_COMMENTS: CommentItem[] = [
-  {
-    id: 'c1',
-    author: '옥탑방달빛',
-    episode: 1,
-    content: '1화 첫 컷에서 옥탑방 난간 너머로 서울 야경 펼쳐질 때 소름 돋았어요. 작화 분위기가 미쳤습니다!',
-    likes: 142,
-    createdAt: '2시간 전',
-    isBest: true,
-  },
-  {
-    id: 'c2',
-    author: '망원동고양이',
-    episode: 3,
-    content: '서준이랑 하은이 옥상 빨랫줄 사이로 마주 보는 연출 진짜 영화 같아요. 다음 화 결제하러 갑니다.',
-    likes: 89,
-    createdAt: '5시간 전',
-    isBest: true,
-  },
-  {
-    id: 'c3',
-    author: '새벽감성러',
-    episode: 5,
-    content: '5화 엔딩 대사 보고 잠 못 자는 중... 6화부터 멤버십 바로 질렀습니다!',
-    likes: 64,
-    createdAt: '1일 전',
-  },
-];
-
-const SAFE_EPISODES_100: Episode[] = EPISODES_100.map((episode) => ({
-  ...episode,
-  num: episode.epNumber,
-  cuts: episode.cuts as unknown as EpisodeCut[],
-}));
-
 const compressCutImage = async (file: File): Promise<File> => {
   const bitmap = await createImageBitmap(file);
   let maxDimension = 1500;
@@ -167,21 +131,12 @@ const checkImageUrl = (url: string): Promise<boolean> =>
     image.src = url;
   });
 
-const INITIAL_WORKS: WebtoonWork[] = [
-  {
-    id: 'work-dalbit',
-    title: '달을 비추는 옥탑',
-    authorName: '웹툰스튜디오스 오리지널',
-    authorId: 'official-studio',
-    genre: '감성 로맨스 · 드라마',
-    synopsis:
-      '서울의 가장 낮은 골목 끝, 달빛만이 유일한 조명인 오래된 옥탑방. 각자의 상처를 숨긴 채 옥상 난간을 마주한 두 청춘이 써 내려가는 100일간의 야경 로맨스 드라마.',
-    coverImg: SAFE_EPISODES_100[0]?.cuts?.[0]?.img || '',
-    subscribers: 1280,
-    episodes: SAFE_EPISODES_100,
-    isOfficial: true,
-  },
-];
+const EMPTY_WORK: WebtoonWork = {
+  id: '', title: '', authorId: '', authorName: '', genre: '',
+  synopsis: '', coverImg: '', subscribers: 0, episodes: [],
+};
+
+const isCatalogWork = (work: WebtoonWork) => work.id !== 'work-dalbit';
 
 const STORAGE_KEYS = {
   LEGACY_USERS: 'webtoon_studios_users_v2',
@@ -194,8 +149,8 @@ export default function WebtoonStudioPage() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
 
   // 다중 작품(공유 플랫폼) 상태
-  const [works, setWorks] = useState<WebtoonWork[]>(INITIAL_WORKS);
-  const [selectedWorkId, setSelectedWorkId] = useState<string>('work-dalbit');
+  const [works, setWorks] = useState<WebtoonWork[]>([]);
+  const [selectedWorkId, setSelectedWorkId] = useState<string>('');
   const [selectedEpisodeNum, setSelectedEpisodeNum] = useState<number>(1);
   const [readerDirection, setReaderDirection] = useState<'vertical' | 'horizontal'>('vertical');
   const [readerCutIndex, setReaderCutIndex] = useState(0);
@@ -250,8 +205,8 @@ export default function WebtoonStudioPage() {
   const cutFileInputRef = useRef<HTMLInputElement>(null);
 
   // 좋아요 & 댓글 & 토스트
-  const [likedEpisodes, setLikedEpisodes] = useState<string[]>(['work-dalbit-1']);
-  const [comments, setComments] = useState<CommentItem[]>(INITIAL_COMMENTS);
+  const [likedEpisodes, setLikedEpisodes] = useState<string[]>([]);
+  const [comments, setComments] = useState<CommentItem[]>([]);
   const [newComment, setNewComment] = useState<string>('');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -290,8 +245,8 @@ export default function WebtoonStudioPage() {
       if (savedWorks) {
         const parsedCustom: WebtoonWork[] = JSON.parse(savedWorks);
         if (Array.isArray(parsedCustom) && parsedCustom.length > 0) {
-          localCustomWorks = parsedCustom;
-          setWorks([...INITIAL_WORKS, ...localCustomWorks]);
+          localCustomWorks = parsedCustom.filter(isCatalogWork);
+          setWorks(localCustomWorks);
         }
       }
     } catch {
@@ -336,7 +291,7 @@ export default function WebtoonStudioPage() {
         const databaseWorks = Array.isArray(data.works) ? (data.works as WebtoonWork[]) : [];
         setWorks((currentWorks) => {
           const merged = new Map<string, WebtoonWork>();
-          [...INITIAL_WORKS, ...currentWorks.filter((work) => !work.isOfficial), ...databaseWorks]
+          [...currentWorks.filter((work) => !work.isOfficial), ...databaseWorks].filter(isCatalogWork)
             .forEach((work) => merged.set(work.id, work));
           const updatedWorks = Array.from(merged.values());
           try {
@@ -404,7 +359,7 @@ export default function WebtoonStudioPage() {
         const incoming = data.works as WebtoonWork[];
         setWorks((previous) => {
           const merged = new Map<string, WebtoonWork>();
-          [...previous, ...incoming].forEach((work) => merged.set(work.id, work));
+          [...previous, ...incoming].filter(isCatalogWork).forEach((work) => merged.set(work.id, work));
           return Array.from(merged.values());
         });
       } catch { /* Keep the existing catalog available while offline. */ }
@@ -437,9 +392,12 @@ export default function WebtoonStudioPage() {
     }
   };
 
+  const featuredWork = works.find((work) => work.title.normalize('NFC').replace(/\s+/g, '') === '서울의달');
+  const featuredFirstEpisode = featuredWork?.episodes.find((episode) => episode.num === 1);
+
   // 현재 선택된 작품 & 회차
   const currentWork: WebtoonWork =
-    works.find((w) => w.id === selectedWorkId) || works[0];
+    works.find((w) => w.id === selectedWorkId) || featuredWork || works[0] || EMPTY_WORK;
 
   const currentEpisode: Episode =
     currentWork.episodes.find((ep) => ep.num === selectedEpisodeNum) ||
@@ -533,7 +491,7 @@ export default function WebtoonStudioPage() {
       setCurrentUser(adminAccount);
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminAccount));
       setAdminError('');
-      setAdminSuccessMsg('관리자 모드로 로그인되었습니다. 1~100화 전체 열람이 가능합니다.');
+      setAdminSuccessMsg('관리자 모드로 로그인되었습니다. 전체 열람이 가능합니다.');
       setAdminPinInput('');
       showToast('관리자 로그인 완료 (전체 회차 잠금 해제)');
     } else {
@@ -1048,6 +1006,7 @@ export default function WebtoonStudioPage() {
   };
 
   const handleAddComment = (e: React.FormEvent) => {
+    if (currentWork.episodes.length === 0) { e.preventDefault(); return; }
     e.preventDefault();
     if (!newComment.trim()) return;
     const authorLabel = currentUser
@@ -1270,11 +1229,12 @@ export default function WebtoonStudioPage() {
               </div>
             </div>
 
+            {featuredWork && (
             {/* 대표 오리지널 작품 하이라이트 바로가기 */}
             <div className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
-                  FEATURED ORIGINAL · 대표 완결작
+                  대표 작품
                 </span>
                 <button
                   type="button"
@@ -1287,10 +1247,10 @@ export default function WebtoonStudioPage() {
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <div className="w-20 h-24 rounded-xl bg-slate-800 overflow-hidden shrink-0 border border-slate-700 flex items-center justify-center">
-                  {INITIAL_WORKS[0].coverImg ? (
+                  {featuredWork.coverImg ? (
                     <img
-                      src={INITIAL_WORKS[0].coverImg}
-                      alt={INITIAL_WORKS[0].title}
+                      src={featuredWork.coverImg}
+                      alt={featuredWork.title}
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -1301,28 +1261,36 @@ export default function WebtoonStudioPage() {
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 text-[11px] font-bold">
-                      100화 완결
+                      {featuredWork.episodes.length}화
                     </span>
-                    <span className="text-xs text-slate-400">{INITIAL_WORKS[0].genre}</span>
+                    <span className="text-xs text-slate-400">{featuredWork.genre}</span>
                   </div>
                   <h3 className="text-lg font-extrabold text-white">
-                    {INITIAL_WORKS[0].title}
+                    {featuredWork.title}
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-400 line-clamp-2 leading-relaxed">
-                    {INITIAL_WORKS[0].synopsis}
+                    {featuredWork.synopsis}
                   </p>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => handleSelectWorkAndEpisode('work-dalbit', 1)}
+                  onClick={() => {
+                    if (featuredFirstEpisode) {
+                      handleSelectWorkAndEpisode(featuredWork.id, featuredFirstEpisode.num);
+                    } else {
+                      setCatalogWorkId(featuredWork.id);
+                      setActiveTab('works');
+                    }
+                  }}
                   className="w-full sm:w-auto shrink-0 px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5"
                 >
                   <Play className="w-3.5 h-3.5 fill-slate-950" />
-                  1화 바로보기
+                  {featuredFirstEpisode ? '1화 바로보기' : '작품 정보 보기'}
                 </button>
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -1579,7 +1547,9 @@ export default function WebtoonStudioPage() {
         {/* ==================== 3. 웹툰 뷰어 탭 ==================== */}
         {activeTab === 'viewer' && (
           <div className="space-y-5">
-            {isCurrentAccessible ? (
+            {currentWork.episodes.length === 0 ? (
+              <p className="py-10 text-center text-sm text-slate-400">감상할 회차가 없습니다.</p>
+            ) : isCurrentAccessible ? (
               <>
                 <h1 className="text-lg sm:text-xl font-bold text-white">
                   제 {currentEpisode.num}화 - {displayedEpisodeTitle}
@@ -1762,7 +1732,7 @@ export default function WebtoonStudioPage() {
                 웹툰스튜디오스 전 작품 무제한 정주행
               </h2>
               <p className="text-sm text-slate-300">
-                《달을 비추는 옥탑》 100화 완결작을 포함한 플랫폼 입점 작가들의 모든 유료 회차를 무제한 감상하세요.
+                입점 작가들의 유료 회차를 무제한 감상하세요.
               </p>
             </div>
 
@@ -1802,7 +1772,7 @@ export default function WebtoonStudioPage() {
                     <span className="text-xs text-slate-400">/ 영구 소장</span>
                   </div>
                   <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
-                    <li>• 《달을 비추는 옥탑》 1~100화 평생 소장</li>
+                    <li>• 전권 소장 대상 작품 감상</li>
                     <li>• 신작 입점 웹툰 우선 열람권</li>
                     <li>• 추가 결제 없이 전편 감상</li>
                   </ul>
@@ -1825,7 +1795,7 @@ export default function WebtoonStudioPage() {
             <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
               <h2 className="text-lg font-bold text-white mb-1">독자 감상 & 작가 소통 게시판</h2>
               <p className="text-xs text-slate-400 mb-4">
-                현재 감상 중인 《{currentWork.title}》 제 {currentEpisode.num}화에 대한 감상을 남겨보세요.
+                {currentWork.episodes.length > 0 ? `《${currentWork.title}》 제 ${currentEpisode.num}화에 대한 감상을 남겨보세요.` : '공개된 회차가 없습니다.'}
               </p>
 
               <form onSubmit={handleAddComment} className="space-y-3">
@@ -2563,7 +2533,7 @@ export default function WebtoonStudioPage() {
                     <div>
                       <h2 className="text-base font-bold text-white">관리자 전용 검수 모드</h2>
                       <p className="text-xs text-slate-400">
-                        결제 없이 1~100화 전체 원고 및 입점 작가 작품을 검수합니다.
+                        결제 없이 전체 원고 및 입점 작가 작품을 검수합니다.
                       </p>
                     </div>
                   </div>
