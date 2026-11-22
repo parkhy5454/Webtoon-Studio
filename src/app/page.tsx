@@ -83,6 +83,69 @@ interface WebtoonWork {
   isOfficial?: boolean;
 }
 
+// Store the already compressed images in a ZIP without recompressing them.
+async function buildEpisodeZip(cuts: EpisodeCut[]) {
+  const parts: BlobPart[] = [];
+  const directory: ArrayBuffer[] = [];
+  const encoder = new TextEncoder();
+  const crcTable = Array.from({ length: 256 }, (_, index) => {
+    let value = index;
+    for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0);
+    return value;
+  });
+  let offset = 0;
+  let directorySize = 0;
+  const images = cuts.filter((cut) => cut.img?.trim());
+  if (!images.length || images.length > 65535) throw new Error('다운로드할 이미지 수를 확인해 주세요.');
+  for (let index = 0; index < images.length; index++) {
+    const response = await fetch(images[index].img).catch(() => {
+      throw new Error(`${index + 1}번째 이미지에 접근할 수 없습니다. 이미지 주소를 확인해 주세요.`);
+    });
+    if (!response.ok) throw new Error(`${index + 1}번째 이미지를 불러오지 못했습니다.`);
+    const type = response.headers.get('content-type')?.split(';')[0];
+    const extension = type === 'image/webp' ? 'webp' : type === 'image/png' ? 'png' : type === 'image/jpeg' ? 'jpg' : '';
+    if (!extension) throw new Error(`${index + 1}번째 이미지의 형식을 확인할 수 없습니다.`);
+    const data = await response.arrayBuffer();
+    if (offset + data.byteLength + directorySize + 256 >= 0xffffffff) throw new Error('ZIP으로 저장하기에 회차 용량이 너무 큽니다.');
+    let crc = 0xffffffff;
+    const bytes = new Uint8Array(data);
+    for (let position = 0; position < bytes.length; position++) {
+      crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[position]) & 255];
+    }
+    crc = (crc ^ 0xffffffff) >>> 0;
+    const name = encoder.encode(`cut-${String(index + 1).padStart(Math.max(3, String(images.length).length), '0')}.${extension}`);
+    const local = new ArrayBuffer(30 + name.length);
+    const header = new DataView(local);
+    header.setUint32(0, 0x04034b50, true);
+    header.setUint16(4, 20, true);
+    header.setUint16(12, 33, true);
+    header.setUint32(14, crc, true);
+    header.setUint32(18, data.byteLength, true);
+    header.setUint32(22, data.byteLength, true);
+    header.setUint16(26, name.length, true);
+    new Uint8Array(local).set(name, 30);
+    const entry = new ArrayBuffer(46 + name.length);
+    const record = new DataView(entry);
+    record.setUint32(0, 0x02014b50, true);
+    record.setUint16(4, 20, true);
+    new Uint8Array(entry).set(new Uint8Array(local, 4, 26), 6);
+    record.setUint32(42, offset, true);
+    new Uint8Array(entry).set(name, 46);
+    parts.push(local, data);
+    directory.push(entry);
+    offset += local.byteLength + data.byteLength;
+    directorySize += entry.byteLength;
+  }
+  const end = new ArrayBuffer(22);
+  const footer = new DataView(end);
+  footer.setUint32(0, 0x06054b50, true);
+  footer.setUint16(8, directory.length, true);
+  footer.setUint16(10, directory.length, true);
+  footer.setUint32(12, directorySize, true);
+  footer.setUint32(16, offset, true);
+  return new Blob([...parts, ...directory, end], { type: 'application/zip' });
+}
+
 const compressCutImage = async (file: File): Promise<File> => {
   const bitmap = await createImageBitmap(file);
   let maxDimension = 1500;
@@ -195,6 +258,8 @@ export default function WebtoonStudioPage() {
   const [newWorkCover, setNewWorkCover] = useState<string>('');
 
   const [targetWorkId, setTargetWorkId] = useState<string>('');
+  const [isDownloadingEpisode, setIsDownloadingEpisode] = useState(false);
+  const [episodeDownloadError, setEpisodeDownloadError] = useState('');
   const [editingEpisodeNum, setEditingEpisodeNum] = useState<number | null>(null);
   const [isSavingEpisode, setIsSavingEpisode] = useState(false);
   const episodeSaveLock = useRef(false);
@@ -866,7 +931,32 @@ export default function WebtoonStudioPage() {
     setCutUploadProgress('');
   };
 
+  const downloadSavedEpisode = async () => {
+    const work = works.find((item) => item.id === targetWorkId && item.authorId === currentUser?.id);
+    const episode = work?.episodes.find((item) => item.num === editingEpisodeNum);
+    if (!work || !episode || isDownloadingEpisode) return;
+
+    setIsDownloadingEpisode(true);
+    setEpisodeDownloadError('');
+    try {
+      const zip = await buildEpisodeZip(episode.cuts);
+      const url = URL.createObjectURL(zip);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${work.title.replace(/[\\/:*?"<>|]/g, '_')}_${episode.num}화.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setEpisodeDownloadError(error instanceof Error ? error.message : '회차 이미지를 ZIP으로 저장하지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      setIsDownloadingEpisode(false);
+    }
+  };
+
   const loadEpisodeForEditing = (episodeNumber: number) => {
+    setEpisodeDownloadError('');
     const ownWorks = works.filter((work) => work.authorId === currentUser?.id);
     const work = ownWorks.find((item) => item.id === targetWorkId) || ownWorks[0];
     const episode = work?.episodes.find((item) => item.num === episodeNumber);
@@ -2171,7 +2261,7 @@ export default function WebtoonStudioPage() {
                           onSubmit={handlePublishEpisode}
                           className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-4"
                         >
-                          <fieldset disabled={isUploadingCutFiles || isSavingEpisode} className="space-y-4 disabled:opacity-70">
+                          <fieldset disabled={isUploadingCutFiles || isSavingEpisode || isDownloadingEpisode} className="space-y-4 disabled:opacity-70">
                           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                             <Upload className="w-4 h-4 text-amber-400" />
                             회차 등록 및 수정
@@ -2239,6 +2329,16 @@ export default function WebtoonStudioPage() {
                                     </option>
                                   ))}
                                 </select>
+                                {editingEpisodeNum !== null && (
+                                  <div className="space-y-2">
+                                    <button type="button" onClick={() => void downloadSavedEpisode()}
+                                      disabled={isDownloadingEpisode}
+                                      className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-white disabled:opacity-50">
+                                      {isDownloadingEpisode ? 'ZIP 준비 중…' : '저장된 회차 ZIP 다운로드'}
+                                    </button>
+                                    {episodeDownloadError && <p role="alert" className="text-xs text-rose-300">{episodeDownloadError}</p>}
+                                  </div>
+                                )}
                                 {editingEpisodeNum !== null && (
                                   <p className="text-xs text-amber-300">
                                     제 {editingEpisodeNum}화 수정 중 · 추가 이미지는 기존 컷 뒤에 이어집니다. 저장하면 같은 회차에 반영됩니다.
