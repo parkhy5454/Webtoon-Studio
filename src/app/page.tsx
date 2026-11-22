@@ -164,7 +164,6 @@ export default function WebtoonStudioPage() {
   const [catalogWorkId, setCatalogWorkId] = useState<string | null>(null);
 
   // 멤버십 & 관리자 검수 모드 상태 (기본 화면에서는 비공개)
-  const [isMember, setIsMember] = useState<boolean>(false);
   const [isAdminReview, setIsAdminReview] = useState<boolean>(false);
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
   const [secretTapCount, setSecretTapCount] = useState<number>(0);
@@ -413,7 +412,7 @@ export default function WebtoonStudioPage() {
   // 열람 가능 여부 (1~5화 무료, 멤버십/관리자 검수 또는 본인 작품일 때 열람 가능)
   const canAccessEpisode = (work: WebtoonWork, epNum: number) => {
     if (epNum <= 5) return true;
-    if (isMember || isAdminLoggedIn) return true;
+    if (isAdminLoggedIn) return true;
     if (currentUser && work.authorId === currentUser.id) return true;
     return false;
   };
@@ -654,7 +653,7 @@ export default function WebtoonStudioPage() {
         newWorkSynopsis.trim() ||
         `${currentUser.displayName} 작가의 오리지널 연재 웹툰입니다.`,
       coverImg: newWorkCover.trim(),
-      subscribers: 1,
+      subscribers: 0,
       episodes: [],
     };
 
@@ -992,12 +991,6 @@ export default function WebtoonStudioPage() {
     }
   };
 
-  const handleSubscribe = (planName: string) => {
-    setIsMember(true);
-    showToast(`${planName} 구독이 완료되었습니다! 전 작품·전 회차 무제한 감상이 가능합니다.`);
-    setActiveTab('viewer');
-  };
-
   const toggleLike = (workId: string, epNum: number) => {
     const key = `${workId}-${epNum}`;
     setLikedEpisodes((prev) =>
@@ -1135,11 +1128,6 @@ export default function WebtoonStudioPage() {
               </button>
             )}
 
-            {isMember && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                <Crown className="w-3.5 h-3.5" />
-              </span>
-            )}
           </div>
         </div>
       </header>
@@ -1171,7 +1159,7 @@ export default function WebtoonStudioPage() {
               </h1>
 
               <p className="text-sm sm:text-base text-slate-300 leading-relaxed mb-6 max-w-2xl">
-                독자는 무료 회차와 멤버십으로 웹툰을 즐기고, 창작자는 작품을 연재해 수익을 나눕니다.
+                독자는 무료 회차와 작품별 이용권으로 웹툰을 즐기고, 창작자는 작품을 연재해 수익을 나눕니다.
               </p>
 
               {/* 핵심 CTA 버튼 2종 */}
@@ -1204,7 +1192,7 @@ export default function WebtoonStudioPage() {
                 </div>
                 <h2 className="text-sm sm:text-base font-bold text-white">1~5화 누구나 무료</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  모든 연재작의 초반 1~5화를 무료로 감상하고, 마음에 드는 작품은 멤버십으로 완결까지 정주행하세요.
+                  모든 연재작의 초반 1~5화를 무료로 감상하고, 마음에 드는 작품은 작품별 이용권으로 이어 보세요.
                 </p>
               </div>
 
@@ -1224,7 +1212,7 @@ export default function WebtoonStudioPage() {
                 </div>
                 <h2 className="text-sm sm:text-base font-bold text-white">투명한 작가 5 : 5 정산</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  멤버십 구독 수익의 50%를 연재 작가에게 직접 배분하며, 작가 스튜디오에서 실시간 정산 현황을 제공합니다.
+                  작품별 유료 이용권 수익은 작가와 플랫폼이 50%씩 배분합니다.
                 </p>
               </div>
             </div>
@@ -1458,9 +1446,7 @@ export default function WebtoonStudioPage() {
                 <span className="text-xs text-slate-400">
                   {isAdminLoggedIn
                     ? '관리자 모드: 전 회차 열람 가능'
-                    : isMember
-                    ? '멤버십 회원: 전 회차 열람 가능'
-                    : '1~5화 무료 / 6화~ 멤버십'}
+                    : '1~5화 무료 / 6화부터 작품 이용권'}
                 </span>
               </div>
 
@@ -1693,10 +1679,10 @@ export default function WebtoonStudioPage() {
                 </div>
                 <div className="space-y-2">
                   <h2 className="text-xl font-bold text-white">
-                    제 {currentEpisode.num}화는 멤버십 전용 회차입니다
+                    제 {currentEpisode.num}화는 작품 이용권이 필요합니다
                   </h2>
                   <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
-                    1~5화는 무료로 감상할 수 있으며, 6화 이후 회차는 멤버십 구독 후 열람할 수 있습니다.
+                    1~5화는 무료로 감상할 수 있으며, 6화부터는 해당 작품의 이용권이 필요합니다.
                   </p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
@@ -1705,7 +1691,7 @@ export default function WebtoonStudioPage() {
                     onClick={() => setActiveTab('membership')}
                     className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm transition"
                   >
-                    멤버십 보기
+                    작품 이용권 보기
                   </button>
                   <button
                     type="button"
@@ -1722,71 +1708,13 @@ export default function WebtoonStudioPage() {
 
         {/* ==================== 4. 멤버십 탭 ==================== */}
         {activeTab === 'membership' && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-500/20 via-slate-900 to-indigo-950 border border-amber-400/30">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-extrabold mb-3">
-                <Crown className="w-3.5 h-3.5" />
-                PREMIUM PASS · PortOne V2 안전결제
-              </div>
-              <h2 className="text-xl sm:text-2xl font-extrabold text-white mb-2">
-                웹툰스튜디오스 전 작품 무제한 정주행
-              </h2>
-              <p className="text-sm text-slate-300">
-                입점 작가들의 유료 회차를 무제한 감상하세요.
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-5">
-                <div>
-                  <span className="text-xs font-semibold text-slate-400">월간 정기구독</span>
-                  <h3 className="text-lg font-bold text-white mt-1">스튜디오 월간 패스</h3>
-                  <div className="mt-3 flex items-baseline gap-1">
-                    <span className="text-2xl font-extrabold text-white">4,900원</span>
-                    <span className="text-xs text-slate-400">/ 월</span>
-                  </div>
-                  <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
-                    <li>• 전 작품 6화~완결 회차 즉시 열람</li>
-                    <li>• 고화질 전체화면 컷 리더 지원</li>
-                    <li>• 구독료 50% 연재 작가 창작 지원 배분</li>
-                  </ul>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleSubscribe('스튜디오 월간 패스')}
-                  className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm border border-slate-700 transition"
-                >
-                  {isMember ? '현재 이용 중' : '월간 패스 시작하기'}
-                </button>
-              </div>
-
-              <div className="p-6 rounded-2xl bg-slate-900 border-2 border-amber-400 flex flex-col justify-between space-y-5 relative">
-                <span className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-extrabold">
-                  BEST 추천
-                </span>
-                <div>
-                  <span className="text-xs font-semibold text-amber-400">평생 소장 올패스</span>
-                  <h3 className="text-lg font-bold text-white mt-1">전권 소장 올패스</h3>
-                  <div className="mt-3 flex items-baseline gap-1">
-                    <span className="text-2xl font-extrabold text-amber-300">19,900원</span>
-                    <span className="text-xs text-slate-400">/ 영구 소장</span>
-                  </div>
-                  <ul className="mt-4 space-y-2 text-xs sm:text-sm text-slate-300">
-                    <li>• 전권 소장 대상 작품 감상</li>
-                    <li>• 신작 입점 웹툰 우선 열람권</li>
-                    <li>• 추가 결제 없이 전편 감상</li>
-                  </ul>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleSubscribe('전권 소장 올패스')}
-                  className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition"
-                >
-                  {isMember ? '전권 소장 완료' : '전권 소장 결제하기'}
-                </button>
-              </div>
-            </div>
-          </div>
+          <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            <h2 className="text-xl font-bold text-white">작품별 이용권</h2>
+            {currentWork.id && <p className="text-sm font-semibold text-slate-200">{currentWork.title}</p>}
+            <p className="text-2xl font-bold text-amber-400">2,900원 <span className="text-sm text-slate-300">/ 30일</span></p>
+            <p className="text-sm text-slate-300">1~5화 무료 · 이용권 구매 시 선택한 작품의 6화부터 열람 · 자동 갱신 없음</p>
+            <p role="status" className="text-sm font-semibold text-slate-400">결제 준비 중</p>
+          </section>
         )}
 
         {/* ==================== 5. 커뮤니티 탭 ==================== */}
@@ -2491,10 +2419,10 @@ export default function WebtoonStudioPage() {
                           <div className="grid grid-cols-2 gap-3">
                             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                               <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                                <Users className="w-3.5 h-3.5 text-indigo-400" />내 작품 총 구독자
+                                <Users className="w-3.5 h-3.5 text-indigo-400" />내 작품 유료 이용자
                               </span>
                               <p className="text-lg font-extrabold text-white mt-1">
-                                {myWorksList.reduce((acc, w) => acc + w.subscribers, 0)}명
+                                집계 준비 중
                               </p>
                             </div>
                             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
@@ -2502,17 +2430,12 @@ export default function WebtoonStudioPage() {
                                 이번 달 예상 정산액 (50%)
                               </span>
                               <p className="text-lg font-extrabold text-amber-300 mt-1">
-                                {(
-                                  myWorksList.reduce((acc, w) => acc + w.subscribers, 0) *
-                                  4900 *
-                                  0.5
-                                ).toLocaleString()}
-                                원
+                                집계 준비 중
                               </p>
                             </div>
                           </div>
                           <p className="text-[11px] text-slate-400 leading-relaxed">
-                            * 멤버십 월 구독료(4,900원) 중 작가 창작 지원 배분율 50%가 작품별 구독 비중 및 열람 수에 따라 자동 산정됩니다.
+                            PG 연동 후 작품별 실제 결제·환불 내역을 기준으로 집계합니다.
                           </p>
                         </div>
                       )}
@@ -2669,7 +2592,7 @@ export default function WebtoonStudioPage() {
             }`}
           >
             <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span>멤버십</span>
+            <span>이용권</span>
           </button>
 
           <button
