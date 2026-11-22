@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { hasDatabaseUrl, getSql } from '@/lib/db';
-import { createSession, ensureAuthSchema, hashPassword, AUTH_COOKIE, sessionCookieOptions } from '@/lib/auth';
+import { createSession, hashPassword, AUTH_COOKIE, sessionCookieOptions } from '@/lib/auth';
+
+import { ensureReferralSchema, normalizeReferralCode } from '@/lib/referrals';
 
 export const runtime = 'nodejs';
 
@@ -24,15 +26,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '비밀번호는 8자 이상 입력해 주세요.' }, { status: 400 });
     }
 
-    await ensureAuthSchema();
+    const referralCode = normalizeReferralCode(body.referralCode);
+    await ensureReferralSchema();
     const sql = getSql();
     const id = randomUUID();
     const passwordHash = await hashPassword(password);
     const rows = await sql`
-      INSERT INTO webtoon_users (id, role, display_name, email, password_hash)
-      VALUES (${id}, ${role}, ${displayName}, ${email}, ${passwordHash})
-      ON CONFLICT (email) DO NOTHING
-      RETURNING id, role, display_name, email, created_at
+      WITH new_user AS (
+        INSERT INTO webtoon_users (id, role, display_name, email, password_hash)
+        VALUES (${id}, ${role}, ${displayName}, ${email}, ${passwordHash})
+        ON CONFLICT (email) DO NOTHING
+        RETURNING id, role, display_name, email, created_at
+      ), referral AS (
+        INSERT INTO webtoon_referrals (invitee_id, inviter_id)
+        SELECT new_user.id, codes.user_id
+        FROM new_user JOIN webtoon_referral_codes codes ON codes.code = ${referralCode}::uuid
+      )
+      SELECT * FROM new_user
     `;
     if (!rows[0]) {
       return NextResponse.json({ error: '이미 가입된 이메일입니다. 로그인 탭을 이용해 주세요.' }, { status: 409 });

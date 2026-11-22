@@ -318,12 +318,53 @@ export default function WebtoonStudioPage() {
   };
 
   const [inviteStatus, setInviteStatus] = useState('');
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [inviteSummary, setInviteSummary] = useState<{
+    userId: string; url: string; signups: number; paid: number; rewards: number;
+  } | null>(null);
+  const [inviteError, setInviteError] = useState(false);
+  const inviteUserId = currentUser?.id;
+  const ownInvite = inviteSummary?.userId === inviteUserId ? inviteSummary : null;
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('ref');
+    if (code) {
+      setReferralCode(code);
+      setActiveTab('settings');
+      setAuthMode('signup');
+    }
+  }, []);
+
+  useEffect(() => {
+    setInviteSummary(null);
+    setInviteError(false);
+    setInviteStatus('');
+    if (!inviteUserId || activeTab !== 'settings') return;
+    const controller = new AbortController();
+    void fetch('/api/referrals', { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Referral lookup failed');
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        const url = new URL('/', window.location.origin);
+        url.searchParams.set('ref', data.code);
+        setInviteSummary({
+          userId: inviteUserId, url: url.toString(),
+          signups: data.signups, paid: data.paid, rewards: data.rewards,
+        });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setInviteError(true);
+      });
+    return () => controller.abort();
+  }, [activeTab, inviteUserId]);
   const inviteTerms = '친구가 가입 후 첫 결제를 완료하면, 두 사람 모두 참여 작품 1편을 30일간 무료로 감상할 수 있어요.';
-  const inviteNotice = '보상은 결제 연동 후 시작 예정이며, 지금 공유한 링크는 추천으로 집계되지 않습니다.';
+  const inviteNotice = '초대 링크로 가입하면 추천이 기록됩니다. 무료 감상 보상은 결제 연동 후 시작됩니다.';
   const getInviteMessage = () =>
-    ['웹툰스튜디오 친구 초대', inviteTerms, inviteNotice, window.location.origin].join('\n');
+    ['웹툰스튜디오 친구 초대', inviteTerms, inviteNotice, ownInvite?.url ?? ''].join('\n');
 
   const copyInviteMessage = async () => {
+    if (!ownInvite) return;
     try {
       await navigator.clipboard.writeText(getInviteMessage());
       setInviteStatus('안내와 링크를 복사했습니다. 카카오톡이나 문자에 붙여넣으세요.');
@@ -333,6 +374,7 @@ export default function WebtoonStudioPage() {
   };
 
   const shareInviteMessage = async () => {
+    if (!ownInvite) return;
     if (!navigator.share) {
       await copyInviteMessage();
       return;
@@ -680,7 +722,7 @@ export default function WebtoonStudioPage() {
         const response = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ displayName: name, email, password, role: signupRole }),
+          body: JSON.stringify({ displayName: name, email, password, role: signupRole, referralCode }),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -2000,13 +2042,25 @@ export default function WebtoonStudioPage() {
               <h2 className="text-base font-bold text-white">친구 초대</h2>
               <p className="text-sm text-slate-200">{inviteTerms}</p>
               <p className="text-xs text-amber-300">{inviteNotice}</p>
+              {ownInvite ? (
+                <p className="text-xs text-slate-300">
+                  초대 가입 {ownInvite.signups}명 · 첫 결제 {ownInvite.paid}명 · 받은 보상 {ownInvite.rewards}개
+                </p>
+              ) : (
+                <p role="status" className="text-xs text-slate-300">
+                  {inviteError ? '초대 정보를 불러오지 못했습니다. 설정 화면을 다시 열어 주세요.'
+                    : inviteUserId ? '초대 링크를 불러오는 중입니다.'
+                    : referralCode ? '이 화면에서 회원가입하면 친구 추천이 기록됩니다.'
+                    : '내 초대 링크를 만들려면 로그인해 주세요.'}
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => void shareInviteMessage()}
-                  className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-slate-950">
+                <button type="button" disabled={!ownInvite} onClick={() => void shareInviteMessage()}
+                  className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">
                   카카오톡·문자 공유
                 </button>
-                <button type="button" onClick={() => void copyInviteMessage()}
-                  className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">
+                <button type="button" disabled={!ownInvite} onClick={() => void copyInviteMessage()}
+                  className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
                   초대 문구 복사
                 </button>
               </div>
