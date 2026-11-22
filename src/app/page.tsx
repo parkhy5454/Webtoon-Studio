@@ -1217,12 +1217,12 @@ export default function WebtoonStudioPage() {
       {/* 상단 고정 헤더 */}
       <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
-          {/* 상단 왼쪽 웹툰스튜디오스 로고/타이틀 -> 클릭 시 홈 메인 화면 이동 */}
+          {/* 상단 왼쪽 웹툰스튜디오 로고/타이틀 -> 클릭 시 홈 메인 화면 이동 */}
           <button
             type="button"
             onClick={handleGoHome}
             className="flex items-center gap-2.5 min-w-0 text-left group focus:outline-none"
-            title="웹툰스튜디오스 홈 메인 화면으로 이동"
+            title="웹툰스튜디오 홈 메인 화면으로 이동"
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-indigo-600 flex items-center justify-center text-slate-950 font-black text-sm shadow shrink-0 group-hover:scale-105 transition">
               W
@@ -1230,7 +1230,7 @@ export default function WebtoonStudioPage() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm sm:text-base tracking-tight text-white group-hover:text-amber-300 transition">
-                  웹툰스튜디오스
+                  웹툰스튜디오
                 </span>
                 {isAdminLoggedIn && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
