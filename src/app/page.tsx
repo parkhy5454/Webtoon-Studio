@@ -489,6 +489,11 @@ export default function WebtoonStudioPage() {
     return false;
   };
 
+  const previousEpisode = currentWork.episodes.reduce<Episode | undefined>((previous, episode) => {
+    if (episode.num >= currentEpisode.num) return previous;
+    return !previous || episode.num > previous.num ? episode : previous;
+  }, undefined);
+
   const nextEpisode = currentWork.episodes.reduce<Episode | undefined>((next, episode) => {
     if (episode.num <= currentEpisode.num) return next;
     return !next || episode.num < next.num ? episode : next;
@@ -1762,19 +1767,16 @@ export default function WebtoonStudioPage() {
                   <p className="py-10 text-center text-sm text-slate-400">등록된 이미지가 없습니다.</p>
                 )}
 
-                <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
-                  {nextEpisode ? (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectWorkAndEpisode(currentWork.id, nextEpisode.num)}
-                      className="flex items-center gap-2 rounded-xl bg-amber-400 px-6 py-3 text-sm font-bold text-slate-950 hover:bg-amber-300"
+                <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3">
+                  {previousEpisode ? (
+                    <button type="button"
+                      onClick={() => handleSelectWorkAndEpisode(currentWork.id, previousEpisode.num)}
+                      className="flex items-center justify-center gap-1 rounded-xl bg-amber-400 px-2 py-3 text-xs font-bold text-slate-950 hover:bg-amber-300 sm:text-sm"
                     >
-                      {nextEpisode.num}화 보기
-                      <ChevronRight className="w-4 h-4" />
+                      <ChevronRight className="w-4 h-4 shrink-0 rotate-180" aria-hidden="true" />
+                      {previousEpisode.num}화 보기
                     </button>
-                  ) : (
-                    <p className="text-sm text-slate-400">아직 공개된 다음 화가 없습니다.</p>
-                  )}
+                  ) : <span />}
                   <button
                     type="button"
                     onClick={() => {
@@ -1784,10 +1786,22 @@ export default function WebtoonStudioPage() {
                         document.getElementById('catalog-work-detail')?.scrollIntoView();
                       });
                     }}
-                    className="rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-200"
+                    className="rounded-xl bg-slate-800 px-2 py-3 text-sm font-semibold text-slate-200"
                   >
                     회차 목록
                   </button>
+                  {nextEpisode ? (
+                    <button type="button"
+                      onClick={() => handleSelectWorkAndEpisode(currentWork.id, nextEpisode.num)}
+                      className="flex items-center justify-center gap-1 rounded-xl bg-amber-400 px-2 py-3 text-xs font-bold text-slate-950 hover:bg-amber-300 sm:text-sm"
+                    >
+                      {nextEpisode.num}화 보기
+                      <ChevronRight className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    </button>
+                  ) : <span />}
+                  {!nextEpisode && (
+                    <p className="col-span-3 text-center text-xs text-slate-400">아직 공개된 다음 화가 없습니다.</p>
+                  )}
                 </div>
               </>
             ) : (
