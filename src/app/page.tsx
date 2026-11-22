@@ -1229,8 +1229,8 @@ export default function WebtoonStudioPage() {
               </div>
             </div>
 
+            {/* 대표 작품 바로가기 */}
             {featuredWork && (
-            {/* 대표 오리지널 작품 하이라이트 바로가기 */}
             <div className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
