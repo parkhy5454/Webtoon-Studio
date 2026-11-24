@@ -157,36 +157,80 @@ async function buildEpisodeZip(cuts: EpisodeCut[]) {
   return new Blob([...parts, ...directory, end], { type: 'application/zip' });
 }
 
-const compressCutImage = async (file: File): Promise<File> => {
-  const bitmap = await createImageBitmap(file);
-  let maxDimension = 1500;
-  let quality = 0.82;
-  let blob: Blob | null = null;
+const getCutImageType = async (file: File): Promise<string | null> => {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if ([137, 80, 78, 71, 13, 10, 26, 10].every((byte, i) => bytes[i] === byte)) return 'image/png';
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';
+  if (String.fromCharCode(...Array.from(bytes.slice(0, 4))) === 'RIFF' &&
+      String.fromCharCode(...Array.from(bytes.slice(8, 12))) === 'WEBP') return 'image/webp';
+  return null;
+};
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext('2d');
-    if (!context) {
-      bitmap.close();
-      throw new Error('이미지 변환을 시작하지 못했습니다.');
+const loadCutImage = async (file: File) => {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file);
+      return { image: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
+    } catch {
+      // Some versions of Safari can display files that createImageBitmap rejects.
     }
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
-    if (blob && blob.size <= 850 * 1024) break;
-    maxDimension -= 150;
-    quality -= 0.08;
   }
-  bitmap.close();
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('이미지를 열 수 없습니다.'));
+      image.src = url;
+    });
+    return { image, width: image.naturalWidth, height: image.naturalHeight, close: () => URL.revokeObjectURL(url) };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+};
 
-  if (!blob || blob.size > 2 * 1024 * 1024) {
-    throw new Error(`${file.name}: 이미지 압축 후에도 용량이 너무 큽니다.`);
+const compressCutImage = async (file: File): Promise<File> => {
+  const type = await getCutImageType(file);
+  if (!type) throw new Error('JPG, PNG, WebP 이미지인지 확인해 주세요.');
+  const original = file.type === type ? file : new File([file], file.name, { type });
+  const targetSize = 850 * 1024;
+  const maxSize = 2 * 1024 * 1024;
+  if (original.size <= targetSize) return original;
+
+  try {
+    const source = await loadCutImage(original);
+    try {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('이미지 변환을 시작하지 못했습니다.');
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const scale = Math.min(1, (1500 - attempt * 150) / Math.max(source.width, source.height));
+        canvas.width = Math.max(1, Math.round(source.width * scale));
+        canvas.height = Math.max(1, Math.round(source.height * scale));
+        context.drawImage(source.image, 0, 0, canvas.width, canvas.height);
+        const quality = 0.82 - attempt * 0.08;
+        let blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+        if (!blob || (blob.type !== 'image/webp' && blob.size > targetSize)) {
+          context.globalCompositeOperation = 'destination-over';
+          context.fillStyle = '#fff';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+        }
+        if (!blob || !['image/webp', 'image/png', 'image/jpeg'].includes(blob.type) ||
+            blob.size > (attempt === 3 ? maxSize : targetSize)) continue;
+        const extension = blob.type === 'image/webp' ? 'webp' : blob.type === 'image/png' ? 'png' : 'jpg';
+        const baseName = file.name.replace(/\.[^.]+$/, '') || 'cut';
+        return new File([blob], `${baseName}.${extension}`, { type: blob.type });
+      }
+    } finally {
+      source.close();
+    }
+  } catch (error) {
+    if (original.size > maxSize) throw error;
   }
-  const extension = blob.type === 'image/webp' ? 'webp' : blob.type === 'image/png' ? 'png' : 'jpg';
-  const baseName = file.name.replace(/\.[^.]+$/, '') || 'cut';
-  return new File([blob], `${baseName}.${extension}`, { type: blob.type || 'image/jpeg' });
+  if (original.size <= maxSize) return original;
+  throw new Error('이미지 압축 후에도 한 장이 2MB를 넘습니다.');
 };
 
 const checkImageUrl = (url: string): Promise<boolean> =>
@@ -1067,11 +1111,6 @@ export default function WebtoonStudioPage() {
     setCutUploadProgress('');
     if (files.length === 0) return;
     if (isUploadingCutFiles) return;
-    const invalidType = files.find((file) => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
-    if (invalidType) {
-      setCutFileError(`${invalidType.name}: JPG, PNG, WEBP 파일만 올릴 수 있습니다.`);
-      return;
-    }
     const tooLarge = files.find((file) => file.size > 15 * 1024 * 1024);
     if (tooLarge) {
       setCutFileError(`${tooLarge.name}: 원본 이미지 한 장은 15MB 이하로 선택해 주세요.`);
@@ -2932,7 +2971,7 @@ export default function WebtoonStudioPage() {
                                   ref={cutFileInputRef}
                                   type="file"
                                   multiple
-                                  accept="image/jpeg,image/png,image/webp"
+                                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                                   className="hidden"
                                   onChange={(event) => void handleCutImageFiles(event.target.files || [])}
                                 />
