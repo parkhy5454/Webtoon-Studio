@@ -6,3 +6,58 @@ body {
   background-color: #0f172a;
   color: #f8fafc;
 }
+
+.light-entry :where(input:not([type="hidden"], [type="file"], [type="checkbox"], [type="radio"]), select, textarea) {
+  color-scheme: light;
+  background-color: #fff;
+  color: #0f172a;
+  caret-color: #4338ca;
+  border-color: #64748b;
+  min-height: 44px;
+}
+
+.light-entry :where(input, textarea)::placeholder {
+  color: #475569;
+  opacity: 1;
+}
+
+.light-entry :where(input:not([type="hidden"], [type="file"]), select, textarea, .password-visibility):focus-visible {
+  border-color: #4338ca;
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.light-entry input:autofill {
+  -webkit-text-fill-color: #0f172a;
+  box-shadow: 0 0 0 40px #eef2ff inset;
+}
+
+.light-login {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+.light-login label,
+.light-login .text-slate-500 {
+  color: #334155;
+}
+
+.light-login .text-rose-400 {
+  color: #9f1239;
+}
+
+.password-visibility {
+  background-color: #e0e7ff;
+  border-color: #818cf8;
+  color: #312e81;
+}
+
+.studio-entry :where(label, legend) {
+  color: #e2e8f0;
+}
+
+@media (max-width: 640px) {
+  .light-entry :where(input:not([type="hidden"], [type="file"], [type="checkbox"], [type="radio"]), select, textarea) {
+    font-size: 16px;
+  }
+}

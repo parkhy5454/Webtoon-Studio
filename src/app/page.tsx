@@ -350,6 +350,8 @@ export default function WebtoonStudioPage() {
   const [signupRole, setSignupRole] = useState<'reader' | 'creator'>('reader');
   const [displayNameInput, setDisplayNameInput] = useState<string>('');
   const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  useEffect(() => { setPasswordVisible(false); }, [authMode]);
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
 
@@ -2556,7 +2558,7 @@ export default function WebtoonStudioPage() {
                     </button>
                   </div>
 
-                  <form id="account-auth-form" onSubmit={handleAuthSubmit} className="space-y-3">
+                  <form id="account-auth-form" onSubmit={handleAuthSubmit} className="light-entry light-login space-y-4 rounded-xl p-4 sm:p-5">
                     {authMode === 'signup' && (
                       <>
                         {/* 회원 유형 선택: 일반 독자 vs 창작 작가 */}
@@ -2612,10 +2614,10 @@ export default function WebtoonStudioPage() {
                     )}
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">
-                        이메일
-                      </label>
+                      <label htmlFor="login-email" className="block text-xs font-medium text-slate-300 mb-1">이메일</label>
                       <input
+                        id="login-email"
+                        autoComplete="username"
                         type="email"
                         value={emailInput}
                         onChange={(e) => setEmailInput(e.target.value)}
@@ -2625,17 +2627,23 @@ export default function WebtoonStudioPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">
-                        비밀번호
-                      </label>
-                      <input
-                        type="password"
+                      <label htmlFor="login-password" className="block text-xs font-medium text-slate-300 mb-1">비밀번호</label>
+                      <div className="flex gap-2">
+                        <input id="login-password"
+                          type={passwordVisible ? 'text' : 'password'}
+                          autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
                         value={passwordInput}
                         onChange={(e) => setPasswordInput(e.target.value)}
                         minLength={authMode === 'signup' ? 8 : undefined}
                         placeholder="비밀번호 입력"
                         className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
                       />
+                        <button type="button" aria-controls="login-password"
+                          onClick={() => setPasswordVisible((visible) => !visible)}
+                          className="password-visibility shrink-0 rounded-xl border px-3 text-sm font-bold">
+                          {passwordVisible ? '숨기기' : '보기'}
+                        </button>
+                      </div>
                       {authMode === 'signup' && (
                         <p className="mt-1 text-[11px] text-slate-500">비밀번호는 8자 이상이어야 합니다.</p>
                       )}
@@ -2719,7 +2727,7 @@ export default function WebtoonStudioPage() {
 
                   {/* 작가 또는 관리자 계정일 때 작가 스튜디오 노출 */}
                   {(currentUser?.role === 'creator' || isAdminLoggedIn) && (
-                    <div className="min-w-0 max-w-full overflow-x-clip [overflow-wrap:anywhere] space-y-4 pt-2 border-t border-slate-800">
+                    <div className="min-w-0 max-w-full overflow-x-clip [overflow-wrap:anywhere] light-entry studio-entry space-y-4 pt-2 border-t border-slate-800">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs font-bold text-indigo-300">
                           작가 스튜디오 · 작품 및 회차 관리

@@ -15,7 +15,7 @@ export default function ResetPasswordPage() {
   return (
     <main className="mx-auto max-w-md space-y-4 px-5 py-12">
       <h1 className="text-xl font-bold">비밀번호 재설정</h1>
-      <form className="space-y-3" onSubmit={async (event) => {
+      <form className="light-entry light-login space-y-3 rounded-xl p-4" onSubmit={async (event) => {
         event.preventDefault();
         if (pending) return;
         setPending(true);
