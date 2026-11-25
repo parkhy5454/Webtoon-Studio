@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
     const works = rows.map(({ author_id, payload, created_at, updated_at, popularity }) => {
       const own = !!admin || user?.id === author_id;
       const episodes: { num: number; title: string; cuts: unknown; releaseAt?: number }[] = Array.isArray(payload?.episodes) ? payload.episodes : [];
+      episodes.sort((a, b) => (a?.num ?? 0) - (b?.num ?? 0));
       const visible = episodes.filter((ep) => ep && (ep.releaseAt == null || (ep.releaseAt > 0 && ep.releaseAt <= now)));
       const canRead = own || paidWorks.has(payload?.id);
       return {
@@ -106,6 +107,39 @@ export async function PATCH(request: NextRequest) {
         WHERE id = ${body.id} AND author_id = ${user.id} RETURNING id
       `;
       return NextResponse.json({ saved: !!work }, { status: work ? 200 : 404 });
+    }
+    if (typeof body?.id === 'string' && body.episode) {
+      const episode = body.episode;
+      if (!Number.isSafeInteger(episode.num) || episode.num < 1 || episode.num > 2147483647 ||
+          typeof episode.title !== 'string' || !episode.title.trim() ||
+          !Array.isArray(episode.cuts) || !Number.isSafeInteger(episode.releaseAt) || episode.releaseAt < 0 ||
+          typeof body.editing !== 'boolean') {
+        return NextResponse.json({ error: '회차 번호와 내용을 확인해 주세요.' }, { status: 400 });
+      }
+      const data = JSON.stringify(episode);
+      const cover = episode.releaseAt > 0 && episode.releaseAt <= Date.now() && typeof episode.cuts[0]?.img === 'string'
+        ? episode.cuts[0].img : '';
+      const [updated] = await getSql()`
+        UPDATE webtoon_creator_works
+        SET payload = jsonb_set(
+          jsonb_set(payload, '{episodes}', (
+            SELECT COALESCE(jsonb_agg(item), '[]'::jsonb)
+            FROM jsonb_array_elements(COALESCE(payload->'episodes', '[]'::jsonb)) AS item
+            WHERE item->'num' IS DISTINCT FROM to_jsonb(${episode.num}::int)
+          ) || jsonb_build_array(${data}::jsonb)),
+          '{coverImg}', to_jsonb(COALESCE(NULLIF(payload->>'coverImg', ''), ${cover}::text))
+        ), updated_at = NOW()
+        WHERE id = ${body.id} AND author_id = ${user.id}
+          AND jsonb_path_exists(
+            COALESCE(payload->'episodes', '[]'::jsonb),
+            '$[*] ? (@.num == $number)', jsonb_build_object('number', ${episode.num}::int)
+          ) = ${body.editing}::boolean
+        RETURNING payload->'episodes' AS episodes, payload->>'coverImg' AS "coverImg"
+      `;
+      if (!updated) return NextResponse.json({
+        error: body.editing ? '수정할 회차를 찾을 수 없습니다.' : '이미 같은 번호의 회차가 있거나 작품을 찾을 수 없습니다.',
+      }, { status: 409 });
+      return NextResponse.json(updated);
     }
     const genres: unknown = body?.genres;
     if (typeof body?.id !== 'string' || !Array.isArray(genres) || genres.length < 1 ||

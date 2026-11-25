@@ -291,6 +291,8 @@ const EMPTY_WORK: WebtoonWork = {
   synopsis: '', coverImg: '', subscribers: 0, episodes: [],
 };
 
+const orderEpisodes = (episodes: Episode[]) => [...episodes].sort((a, b) => a.num - b.num);
+
 const hidePaidCuts = (work: WebtoonWork) => ({
   ...work,
   episodes: work.episodes.map((episode) => episode.num > 5 ? { ...episode, cuts: [] } : episode),
@@ -368,6 +370,7 @@ export default function WebtoonStudioPage() {
   const [targetWorkId, setTargetWorkId] = useState<string>('');
   const [isDownloadingEpisode, setIsDownloadingEpisode] = useState(false);
   const [episodeDownloadError, setEpisodeDownloadError] = useState('');
+  const [newEpisodeNumber, setNewEpisodeNumber] = useState('');
   const [editingEpisodeNum, setEditingEpisodeNum] = useState<number | null>(null);
   const [isSavingEpisode, setIsSavingEpisode] = useState(false);
   const episodeSaveLock = useRef(false);
@@ -625,7 +628,7 @@ export default function WebtoonStudioPage() {
 
   const currentEpisode: Episode =
     currentWork.episodes.find((ep) => ep.num === selectedEpisodeNum) ||
-    currentWork.episodes[0] || {
+    orderEpisodes(currentWork.episodes)[0] || {
       num: 1,
       title: '등록된 회차가 없습니다',
       cuts: [],
@@ -1263,6 +1266,7 @@ export default function WebtoonStudioPage() {
 
   const resetEpisodeEditor = (workId: string = targetWorkId) => {
     setTargetWorkId(workId);
+    setNewEpisodeNumber('');
     setEditingEpisodeNum(null);
     setPublishMode('now');
     setPublishDate('');
@@ -1348,6 +1352,16 @@ export default function WebtoonStudioPage() {
       showToast('수정할 회차를 다시 선택해 주세요.');
       return;
     }
+    const suggestedNum = Math.max(0, ...targetWork.episodes.map((episode) => episode.num)) + 1;
+    const nextNum = editingEpisodeNum ?? (newEpisodeNumber === '' ? suggestedNum : Number(newEpisodeNumber));
+    if (!Number.isSafeInteger(nextNum) || nextNum < 1 || nextNum > 2147483647) {
+      showToast('회차 번호는 1 이상의 정수로 입력해 주세요.');
+      return;
+    }
+    if (editingEpisodeNum === null && targetWork.episodes.some((episode) => episode.num === nextNum)) {
+      showToast(`이미 ${nextNum}화가 있습니다. 기존 회차 수정에서 선택해 주세요.`);
+      return;
+    }
     const cleanEpisodeTitle = newEpTitle.trim().replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim();
     if (!cleanEpisodeTitle) {
       showToast('회차 제목을 입력해주세요.');
@@ -1405,7 +1419,6 @@ export default function WebtoonStudioPage() {
     setCutFileError('');
 
     const validCuts = activeCuts.map(({ cut }) => cut);
-    const nextNum = editingEpisodeNum ?? Math.max(0, ...targetWork.episodes.map((episode) => episode.num)) + 1;
     const existingEpisode = targetWork.episodes.find((episode) => episode.num === editingEpisodeNum);
     const releaseAt = publishMode === 'draft' ? 0 : publishMode === 'scheduled'
       ? new Date(publishDate).getTime()
@@ -1433,8 +1446,29 @@ export default function WebtoonStudioPage() {
       };
     });
 
-    const saved = await persistCustomWorks(updatedWorks);
-    if (!saved) return;
+    if (currentUser.role === 'creator') {
+      try {
+        const response = await fetch('/api/creator/works', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: targetWork.id, episode: newEpisode, editing: editingEpisodeNum !== null }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showToast(result.error || '회차를 저장하지 못했습니다.');
+          return;
+        }
+        setWorks((items) => items.map((item) => item.id === targetWork.id
+          ? { ...item, episodes: orderEpisodes(result.episodes), coverImg: result.coverImg ?? item.coverImg }
+          : item));
+      } catch {
+        showToast('서버에 연결하지 못했습니다. 다시 시도해 주세요.');
+        return;
+      }
+    } else if (!await persistCustomWorks(updatedWorks.map((work) =>
+      work.id === targetWork.id ? { ...work, episodes: orderEpisodes(work.episodes) } : work
+    ))) return;
+    setNewEpisodeNumber('');
     setNewEpTitle('');
     setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
     if (publishMode === 'now') showToast(`《${targetWork.title}》 제 ${nextNum}화가 ${editingEpisodeNum !== null ? '수정되었습니다' : '공개되었습니다'}!`);
@@ -2068,7 +2102,7 @@ export default function WebtoonStudioPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-800/80 rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
-                  {catalogSelectedWork.episodes.map((ep) => {
+                  {orderEpisodes(catalogSelectedWork.episodes).map((ep) => {
                     const unlocked = canAccessEpisode(catalogSelectedWork, ep.num);
                     const thumb = ep.cuts?.[0]?.img;
 
@@ -2906,7 +2940,7 @@ export default function WebtoonStudioPage() {
                                   >
                                     {myWorksList.map((w) => (
                                       <option key={w.id} value={w.id}>
-                                        {w.title} (다음: 제 {w.episodes.length + 1}화)
+                                        {w.title}
                                       </option>
                                     ))}
                                   </select>
@@ -2925,6 +2959,18 @@ export default function WebtoonStudioPage() {
                                 </div>
                               </div>
 
+                              {editingEpisodeNum === null && (
+                                <label className="block text-sm text-slate-300">
+                                  새 회차 번호
+                                  <input type="number" min={1} max={2147483647} step={1}
+                                    value={newEpisodeNumber}
+                                    placeholder={String(Math.max(0, ...((myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes ?? []).map((episode) => episode.num)) + 1)}
+                                    onChange={(event) => setNewEpisodeNumber(event.target.value)}
+                                    className="mt-1 block w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-white" />
+                                  <span className="mt-1 block text-xs">번호를 직접 입력할 수 있습니다. 비워 두면 다음 번호를 사용합니다.</span>
+                                </label>
+                              )}
+
                               <div className="space-y-2">
                                 <label className="block text-xs text-slate-300">등록 또는 수정할 회차</label>
                                 <select
@@ -2935,7 +2981,7 @@ export default function WebtoonStudioPage() {
                                   className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white"
                                 >
                                   <option value="new">새 회차 등록</option>
-                                  {(myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes.map((episode) => (
+                                  {orderEpisodes((myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes ?? []).map((episode) => (
                                     <option key={episode.num} value={episode.num}>
                                       제 {episode.num}화 {episode.releaseAt === 0 ? '(임시저장)' : (episode.releaseAt ?? 0) > Date.now() ? '(공개 예약)' : ''} - {episode.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim()} 수정
                                     </option>
