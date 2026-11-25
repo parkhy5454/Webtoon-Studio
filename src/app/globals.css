@@ -61,3 +61,73 @@ body {
     font-size: 16px;
   }
 }
+
+/* Keep the touch-first mobile palette and switch the desktop workspace to light surfaces. */
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  body { color-scheme: light; }
+  body :where([class~="bg-slate-950"]) { background-color: #f1f5f9; }
+  body :where([class~="bg-slate-900"], [class~="bg-slate-900/50"], [class~="bg-slate-900/60"], [class~="bg-slate-900/70"], [class~="bg-slate-900/80"], [class~="bg-slate-900/90"]) { background-color: #ffffff; }
+  body :where([class~="bg-slate-950/60"], [class~="bg-slate-950/70"], [class~="bg-slate-950/80"]) { background-color: #f8fafc; }
+  body :where([class~="bg-slate-950/90"], [class~="bg-slate-950/95"]) { background-color: rgb(255 255 255 / 96%); }
+  body :where([class~="bg-slate-700"], [class~="bg-slate-800"], [class~="bg-slate-800/70"]) { background-color: #e2e8f0; }
+  body :where([class~="bg-indigo-950/50"]) { background-color: #e0e7ff; }
+  body :where([class~="bg-emerald-950/40"]) { background-color: #d1fae5; }
+  body :where([class~="text-slate-100"], [class~="text-slate-200"]) { color: #0f172a; }
+  body :where([class~="text-slate-300"], [class~="text-slate-400"]) { color: #334155; }
+  body :where([class~="text-slate-500"]) { color: #475569; }
+  body :where([class~="text-amber-300"], [class~="text-amber-400"], [class~="text-amber-400/90"]) { color: #854d0e; }
+  body :where([class~="text-emerald-200"], [class~="text-emerald-300"], [class~="text-emerald-400"]) { color: #065f46; }
+  body :where([class~="text-indigo-200"], [class~="text-indigo-300"], [class~="text-indigo-400"]) { color: #3730a3; }
+  body :where([class~="text-rose-200"], [class~="text-rose-300"], [class~="text-rose-400"]) { color: #9f1239; }
+  body :where([class~="border-slate-800"], [class~="border-slate-800/80"]) { border-color: #cbd5e1; }
+  body :where([class~="border-slate-700"], [class~="border-slate-700/70"]) { border-color: #94a3b8; }
+
+  body.bg-slate-950 { background-color: #f1f5f9; color: #0f172a; }
+
+  body :where(.text-white:not([class~="bg-indigo-600"], [class~="bg-indigo-600/90"], [class~="bg-indigo-500"])) {
+    color: #0f172a;
+  }
+
+  body :where([class~="from-indigo-950"], [class~="from-indigo-950/60"]) {
+    --tw-gradient-from: #e0e7ff var(--tw-gradient-from-position);
+    --tw-gradient-to: rgb(224 231 255 / 0) var(--tw-gradient-to-position);
+  }
+
+  body .from-slate-900 {
+    --tw-gradient-from: #ffffff var(--tw-gradient-from-position);
+    --tw-gradient-to: rgb(255 255 255 / 0) var(--tw-gradient-to-position);
+  }
+
+  body .via-slate-900 {
+    --tw-gradient-stops: var(--tw-gradient-from), #f8fafc var(--tw-gradient-via-position), var(--tw-gradient-to);
+  }
+
+  body :where(.to-slate-900, .to-slate-950) {
+    --tw-gradient-to: #ffffff var(--tw-gradient-to-position);
+  }
+
+  body :where([class~="hover:bg-slate-700"], [class~="hover:bg-slate-800"]):hover {
+    background-color: #cbd5e1;
+  }
+
+  body :where([class~="hover:text-white"], [class~="hover:text-slate-200"]):hover {
+    color: #0f172a;
+  }
+
+  body :where(input:not([type="hidden"], [type="file"], [type="checkbox"], [type="radio"]), textarea, select) {
+    background-color: #fff;
+    border-color: #64748b;
+    color: #0f172a;
+  }
+
+  body :where(input, textarea)::placeholder { color: #475569; }
+
+  body :where(input, textarea, select, button, a):focus-visible {
+    outline: 2px solid #4f46e5;
+    outline-offset: 2px;
+  }
+
+  body .studio-entry :where(label, legend) { color: #334155; }
+  body .studio-entry :where(label, input, select, textarea) { font-size: 1rem; }
+  body .studio-entry :where(h3, h4) { font-size: 1.125rem; line-height: 1.5; }
+}
