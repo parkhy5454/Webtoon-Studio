@@ -1274,9 +1274,9 @@ export default function WebtoonStudioPage() {
     setCutUploadProgress('');
   };
 
-  const downloadSavedEpisode = async () => {
-    const work = works.find((item) => item.id === targetWorkId && item.authorId === currentUser?.id);
-    const episode = work?.episodes.find((item) => item.num === editingEpisodeNum);
+  const downloadSavedEpisode = async (workId = targetWorkId, episodeNumber = editingEpisodeNum) => {
+    const work = works.find((item) => item.id === workId && item.authorId === currentUser?.id);
+    const episode = work?.episodes.find((item) => item.num === episodeNumber);
     if (!work || !episode || isDownloadingEpisode) return;
 
     setIsDownloadingEpisode(true);
@@ -2789,6 +2789,8 @@ export default function WebtoonStudioPage() {
                   {currentUser?.role === 'creator' && (
                     <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
                       <h3 className="text-base font-bold text-white">내 작품 목록</h3>
+                      {isDownloadingEpisode && <p role="status" className="text-sm text-slate-400">ZIP 준비 중…</p>}
+                      {episodeDownloadError && <p role="alert" className="text-sm text-rose-300">{episodeDownloadError}</p>}
                       {myWorksList.length === 0 && <p className="text-sm text-slate-400">등록한 작품이 없습니다.</p>}
                       {myWorksList.map((work) => (
                         <div key={work.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 p-3">
@@ -2816,6 +2818,24 @@ export default function WebtoonStudioPage() {
                               {deletingWorkId === work.id ? '삭제 중…' : '작품 삭제'}
                             </button>
                           </div>
+                          {work.episodes.some((episode) => episode.cuts.some((cut) => cut.img?.trim())) && (
+                            <details className="w-full border-t border-slate-700 pt-2">
+                              <summary className="cursor-pointer text-sm font-bold text-slate-200">회차별 ZIP 다운로드</summary>
+                              <ul className="mt-2 space-y-1">
+                                {orderEpisodes(work.episodes).filter((episode) => episode.cuts.some((cut) => cut.img?.trim())).map((episode) => (
+                                  <li key={episode.num} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-950 p-2">
+                                    <span className="text-sm text-slate-200">제 {episode.num}화 · {episode.cuts.filter((cut) => cut.img?.trim()).length}컷</span>
+                                    <button type="button" disabled={isDownloadingEpisode}
+                                      aria-label={`제 ${episode.num}화 ZIP 다운로드`}
+                                      onClick={() => void downloadSavedEpisode(work.id, episode.num)}
+                                      className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-amber-300 disabled:opacity-50">
+                                      ZIP 다운로드
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
                         </div>
                       ))}
                       {genreWork && (
