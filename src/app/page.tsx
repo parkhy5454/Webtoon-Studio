@@ -291,6 +291,8 @@ const EMPTY_WORK: WebtoonWork = {
   synopsis: '', coverImg: '', subscribers: 0, episodes: [],
 };
 
+const nextEpisodeNumber = (episodes: Episode[]) => Math.max(0, ...episodes.map((episode) => episode.num)) + 1;
+
 const orderEpisodes = (episodes: Episode[]) => [...episodes].sort((a, b) => a.num - b.num);
 
 const hidePaidCuts = (work: WebtoonWork) => ({
@@ -370,7 +372,7 @@ export default function WebtoonStudioPage() {
   const [targetWorkId, setTargetWorkId] = useState<string>('');
   const [isDownloadingEpisode, setIsDownloadingEpisode] = useState(false);
   const [episodeDownloadError, setEpisodeDownloadError] = useState('');
-  const [newEpisodeNumber, setNewEpisodeNumber] = useState('');
+  const [newEpisodeNumber, setNewEpisodeNumber] = useState<string | null>(null);
   const [editingEpisodeNum, setEditingEpisodeNum] = useState<number | null>(null);
   const [isSavingEpisode, setIsSavingEpisode] = useState(false);
   const episodeSaveLock = useRef(false);
@@ -1266,7 +1268,7 @@ export default function WebtoonStudioPage() {
 
   const resetEpisodeEditor = (workId: string = targetWorkId) => {
     setTargetWorkId(workId);
-    setNewEpisodeNumber('');
+    setNewEpisodeNumber(null);
     setEditingEpisodeNum(null);
     setPublishMode('now');
     setPublishDate('');
@@ -1352,8 +1354,8 @@ export default function WebtoonStudioPage() {
       showToast('수정할 회차를 다시 선택해 주세요.');
       return;
     }
-    const suggestedNum = Math.max(0, ...targetWork.episodes.map((episode) => episode.num)) + 1;
-    const nextNum = editingEpisodeNum ?? (newEpisodeNumber === '' ? suggestedNum : Number(newEpisodeNumber));
+    const suggestedNum = nextEpisodeNumber(targetWork.episodes);
+    const nextNum = editingEpisodeNum ?? (newEpisodeNumber ? Number(newEpisodeNumber) : suggestedNum);
     if (!Number.isSafeInteger(nextNum) || nextNum < 1 || nextNum > 2147483647) {
       showToast('회차 번호는 1 이상의 정수로 입력해 주세요.');
       return;
@@ -1468,7 +1470,7 @@ export default function WebtoonStudioPage() {
     } else if (!await persistCustomWorks(updatedWorks.map((work) =>
       work.id === targetWork.id ? { ...work, episodes: orderEpisodes(work.episodes) } : work
     ))) return;
-    setNewEpisodeNumber('');
+    setNewEpisodeNumber(null);
     setNewEpTitle('');
     setNewEpCuts([{ img: '', scene: '', narration: '', dialogue: '', sfx: '' }]);
     if (publishMode === 'now') showToast(`《${targetWork.title}》 제 ${nextNum}화가 ${editingEpisodeNum !== null ? '수정되었습니다' : '공개되었습니다'}!`);
@@ -1534,6 +1536,10 @@ export default function WebtoonStudioPage() {
   const myWorksList = currentUser
     ? works.filter((w) => w.authorId === currentUser.id)
     : [];
+
+  const uploadWork = myWorksList.find((work) => work.id === targetWorkId) ?? myWorksList[0];
+  const suggestedEpisodeNumber = nextEpisodeNumber(uploadWork?.episodes ?? []);
+  const visibleNewEpisodeNumber = newEpisodeNumber ?? String(suggestedEpisodeNumber);
 
   const genreWork = myWorksList.find((work) => work.id === genreWorkId);
 
@@ -2963,8 +2969,9 @@ export default function WebtoonStudioPage() {
                                 <label className="block text-sm text-slate-300">
                                   새 회차 번호
                                   <input type="number" min={1} max={2147483647} step={1}
-                                    value={newEpisodeNumber}
-                                    placeholder={String(Math.max(0, ...((myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes ?? []).map((episode) => episode.num)) + 1)}
+                                    value={visibleNewEpisodeNumber}
+                                    placeholder={String(suggestedEpisodeNumber)}
+                                    onBlur={() => { if (newEpisodeNumber === '') setNewEpisodeNumber(null); }}
                                     onChange={(event) => setNewEpisodeNumber(event.target.value)}
                                     className="mt-1 block w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-white" />
                                   <span className="mt-1 block text-xs">번호를 직접 입력할 수 있습니다. 비워 두면 다음 번호를 사용합니다.</span>
@@ -2980,8 +2987,8 @@ export default function WebtoonStudioPage() {
                                     : loadEpisodeForEditing(Number(event.target.value))}
                                   className="w-full min-w-0 max-w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white"
                                 >
-                                  <option value="new">새 회차 등록</option>
-                                  {orderEpisodes((myWorksList.find((work) => work.id === targetWorkId) || myWorksList[0])?.episodes ?? []).map((episode) => (
+                                  <option value="new">제 {editingEpisodeNum === null && visibleNewEpisodeNumber ? visibleNewEpisodeNumber : suggestedEpisodeNumber}화 새로 등록</option>
+                                  {orderEpisodes(uploadWork?.episodes ?? []).map((episode) => (
                                     <option key={episode.num} value={episode.num}>
                                       제 {episode.num}화 {episode.releaseAt === 0 ? '(임시저장)' : (episode.releaseAt ?? 0) > Date.now() ? '(공개 예약)' : ''} - {episode.title.replace(/^제\s*\d+\s*화\s*[:：\-–—]?\s*/, '').trim()} 수정
                                     </option>
