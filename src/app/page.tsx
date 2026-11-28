@@ -2000,7 +2000,7 @@ export default function WebtoonStudioPage() {
                             </span>
                           ) : (
                             <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold">
-                              작가 연재작
+                              {work.completed ? '작가 완결작' : '작가 연재작'}
                             </span>
                           )}
                           <span className="text-[11px] text-slate-400">{work.genre}</span>
@@ -2014,7 +2014,7 @@ export default function WebtoonStudioPage() {
                         </p>
                         <p className="text-xs text-slate-300 line-clamp-2 mt-2 leading-relaxed">{work.synopsis}</p>
                         <p className="text-[11px] text-amber-400/90 mt-1.5 font-medium">
-                          총 {work.episodes.length}화 연재중
+                          총 {work.episodes.length}화 {work.completed ? '완결' : '연재중'}
                         </p>
                       </div>
                     </button>
