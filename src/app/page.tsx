@@ -2800,13 +2800,44 @@ export default function WebtoonStudioPage() {
                             </p>
                             <p className="break-all text-xs text-slate-400">작품 번호 {work.id}</p>
                           </div>
-                          <button type="button" disabled={deletingWorkId !== null}
-                            onClick={() => void deleteOwnedWork(work)}
-                            className="rounded-lg border border-rose-500/40 px-3 py-2 text-sm font-bold text-rose-300 disabled:opacity-50">
-                            {deletingWorkId === work.id ? '삭제 중…' : '작품 삭제'}
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-bold text-slate-200"
+                              onClick={() => {
+                                setGenreWorkId(work.id);
+                                setEditedGenres(Array.from(new Set(getWorkGenres(work.genre)))
+                                  .filter((genre) => WORK_GENRES.includes(genre)).slice(0, 2));
+                                requestAnimationFrame(() => document.getElementById('work-genre-editor')?.scrollIntoView({ block: 'start' }));
+                              }}>
+                              작품 정보 수정
+                            </button>
+                            <button type="button" disabled={deletingWorkId !== null}
+                              onClick={() => void deleteOwnedWork(work)}
+                              className="rounded-lg border border-rose-500/40 px-3 py-2 text-sm font-bold text-rose-300 disabled:opacity-50">
+                              {deletingWorkId === work.id ? '삭제 중…' : '작품 삭제'}
+                            </button>
+                          </div>
                         </div>
                       ))}
+                      {genreWork && (
+                        <form id="work-genre-editor" onSubmit={saveWorkGenre} className="light-entry studio-entry scroll-mt-20 space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4">
+                          <h3 className="text-sm font-bold text-white">{genreWork.title} · 장르 및 연재 상태 수정</h3>
+                          <fieldset disabled={savingGenre} className="space-y-3">
+                                 <p className="text-xs text-slate-400">현재 장르 {genreWork.genre}</p>
+                                {renderGenrePicker(editedGenres, setEditedGenres)}
+                                <button type="button" className="mr-2 rounded-lg border border-slate-700 px-3 py-2 text-sm"
+                                  onClick={() => void setWorkCompletion(genreWork)}>
+                                  {genreWork.completed ? '연재 중으로 변경' : '완결로 변경'}
+                                </button>
+                                <button type="button" onClick={() => setGenreWorkId('')}
+                                  className="mr-2 rounded-lg border border-slate-700 px-3 py-2 text-sm">닫기</button>
+                                <button type="submit" disabled={!editedGenres.length}
+                                  className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-40">
+                                  {savingGenre ? '저장 중…' : '장르 저장'}
+                                </button>
+                           </fieldset>
+                        </form>
+                      )}
+
                     </section>
                   )}
                   {/* 작가 또는 관리자 계정일 때 작가 스튜디오 노출 */}
@@ -2857,39 +2888,6 @@ export default function WebtoonStudioPage() {
                           3. 수익 정산
                         </button>
                       </div>
-
-                      {creatorSubTab === 'newWork' && currentUser?.role === 'creator' && myWorksList.length > 0 && (
-                        <form onSubmit={saveWorkGenre} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4">
-                          <h3 className="text-sm font-bold text-white">내 작품 장르 수정</h3>
-                          <fieldset disabled={savingGenre} className="space-y-3">
-                            <select aria-label="수정할 작품" value={genreWork?.id ?? ''}
-                              className="w-full min-w-0 max-w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
-                              onChange={(event) => {
-                                const work = myWorksList.find((item) => item.id === event.target.value);
-                                setGenreWorkId(work?.id ?? '');
-                                setEditedGenres(Array.from(new Set(getWorkGenres(work?.genre ?? '')))
-                                  .filter((genre) => WORK_GENRES.includes(genre)).slice(0, 2));
-                              }}>
-                              <option value="">수정할 작품 선택</option>
-                              {myWorksList.map((work) => <option key={work.id} value={work.id}>{work.title}</option>)}
-                            </select>
-                            {genreWork && (
-                              <>
-                                <p className="text-xs text-slate-400">현재 장르 {genreWork.genre}</p>
-                                {renderGenrePicker(editedGenres, setEditedGenres)}
-                                <button type="button" className="mr-2 rounded-lg border border-slate-700 px-3 py-2 text-sm"
-                                  onClick={() => void setWorkCompletion(genreWork)}>
-                                  {genreWork.completed ? '연재 중으로 변경' : '완결로 변경'}
-                                </button>
-                                <button type="submit" disabled={!editedGenres.length}
-                                  className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-40">
-                                  {savingGenre ? '저장 중…' : '장르 저장'}
-                                </button>
-                              </>
-                            )}
-                          </fieldset>
-                        </form>
-                      )}
 
                       {/* 서브탭 1: 새 작품 등록 */}
                       {creatorSubTab === 'newWork' && (
