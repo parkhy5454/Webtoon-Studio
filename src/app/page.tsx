@@ -2550,7 +2550,7 @@ export default function WebtoonStudioPage() {
 
             {/* (A) 회원 / 작가 계정 관리 (관리자 관련 문구 및 폼은 일반 화면에 노출하지 않음) */}
             <div className={isLoggedIn
-              ? 'p-6 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-500/30 space-y-5'
+              ? 'sm:p-6 sm:rounded-2xl sm:bg-gradient-to-b from-indigo-950/60 to-slate-900 sm:border border-indigo-500/30 space-y-5'
               : 'light-entry light-login rounded-2xl p-4 sm:p-6 space-y-4'}>
               {isLoggedIn && (
               <div className="flex items-center justify-between gap-2">
@@ -2575,7 +2575,7 @@ export default function WebtoonStudioPage() {
                   <button
                     type="button"
                     onClick={handleLogoutAll}
-                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
+                    className="shrink-0 hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold border border-rose-500/40 transition"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     로그아웃
@@ -2739,9 +2739,9 @@ export default function WebtoonStudioPage() {
               ) : (
                 /* 로그인 상태 표시 카드 */
                 <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                  <div className="sm:p-4 sm:rounded-xl sm:bg-slate-950/70 sm:border border-slate-800 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                             isAdminLoggedIn
@@ -2769,7 +2769,7 @@ export default function WebtoonStudioPage() {
                     <button
                       type="button"
                       onClick={handleLogoutAll}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-200 hover:border-rose-500/40 text-slate-200 text-xs font-bold border border-slate-700 transition flex items-center gap-1.5"
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-200 hover:border-rose-500/40 text-slate-200 text-xs font-bold border border-slate-700 transition hidden sm:flex items-center gap-1.5"
                     >
                       <LogOut className="w-3.5 h-3.5" />
                       현재 계정 로그아웃
@@ -2793,22 +2793,41 @@ export default function WebtoonStudioPage() {
                   )}
 
                   {currentUser?.role === 'creator' && (
-                    <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                    <section className="space-y-3 sm:rounded-xl sm:border border-slate-800 sm:bg-slate-900 sm:p-4">
                       <h3 className="text-base font-bold text-white">내 작품 목록</h3>
                       {isDownloadingEpisode && <p role="status" className="text-sm text-slate-400">ZIP 준비 중…</p>}
                       {episodeDownloadError && <p role="alert" className="text-sm text-rose-300">{episodeDownloadError}</p>}
                       {myWorksList.length === 0 && <p className="text-sm text-slate-400">등록한 작품이 없습니다.</p>}
                       {myWorksList.map((work) => (
-                        <div key={work.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 p-3">
+                        <div key={work.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-700 py-3 sm:rounded-lg sm:border sm:p-3">
                           <div className="min-w-0">
                             <p className="break-words font-bold text-white">{work.title}</p>
                             <p className="text-sm text-slate-300">
-                              {work.createdAt ? new Date(work.createdAt).toLocaleString('ko-KR') + ' · ' : ''}
+                              <span className="hidden sm:inline">{work.createdAt ? new Date(work.createdAt).toLocaleString('ko-KR') + ' · ' : ''}</span>
                               등록 회차 {work.episodes.length}개
                             </p>
-                            <p className="break-all text-xs text-slate-400">작품 번호 {work.id}</p>
+                            <p className="hidden sm:block break-all text-xs text-slate-400">작품 번호 {work.id}</p>
                           </div>
+                          <details className="sm:hidden">
+                            <summary aria-label={work.title + ' 관리'} className="list-none cursor-pointer px-3 py-2 text-xl">⋯</summary>
                           <div className="flex flex-wrap gap-2">
+                            <button type="button" className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-bold text-slate-200"
+                              onClick={() => {
+                                setGenreWorkId(work.id);
+                                setEditedGenres(Array.from(new Set(getWorkGenres(work.genre)))
+                                  .filter((genre) => WORK_GENRES.includes(genre)).slice(0, 2));
+                                requestAnimationFrame(() => document.getElementById('work-genre-editor')?.scrollIntoView({ block: 'start' }));
+                              }}>
+                              작품 정보 수정
+                            </button>
+                            <button type="button" disabled={deletingWorkId !== null}
+                              onClick={() => void deleteOwnedWork(work)}
+                              className="rounded-lg border border-rose-500/40 px-3 py-2 text-sm font-bold text-rose-300 disabled:opacity-50">
+                              {deletingWorkId === work.id ? '삭제 중…' : '작품 삭제'}
+                            </button>
+                          </div>
+                          </details>
+                          <div className="hidden sm:flex flex-wrap gap-2">
                             <button type="button" className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-bold text-slate-200"
                               onClick={() => {
                                 setGenreWorkId(work.id);
@@ -2889,7 +2908,7 @@ export default function WebtoonStudioPage() {
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
-                          1. 새 작품 등록
+                          <span className="sm:hidden whitespace-nowrap">작품 등록</span><span className="hidden sm:inline">1. 새 작품 등록</span>
                         </button>
                         <button
                           type="button"
@@ -2900,7 +2919,7 @@ export default function WebtoonStudioPage() {
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
-                          2. 회차(컷) 업로드
+                          <span className="sm:hidden whitespace-nowrap">회차 업로드</span><span className="hidden sm:inline">2. 회차(컷) 업로드</span>
                         </button>
                         <button
                           type="button"
@@ -2911,7 +2930,7 @@ export default function WebtoonStudioPage() {
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
-                          3. 수익 정산
+                          <span className="sm:hidden whitespace-nowrap">수익 정산</span><span className="hidden sm:inline">3. 수익 정산</span>
                         </button>
                       </div>
 
