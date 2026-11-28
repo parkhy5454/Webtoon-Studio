@@ -66,8 +66,8 @@ body {
 @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   body { color-scheme: light; }
   body.bg-slate-950 :where([class~="bg-slate-950"]) { background-color: #f1f5f9; }
-  body.bg-slate-950 :where([class~="bg-slate-900"], [class~="bg-slate-900/50"], [class~="bg-slate-900/60"], [class~="bg-slate-900/70"], [class~="bg-slate-900/80"], [class~="bg-slate-900/90"]) { background-color: #ffffff; }
-  body.bg-slate-950 :where([class~="bg-slate-950/60"], [class~="bg-slate-950/70"], [class~="bg-slate-950/80"]) { background-color: #f8fafc; }
+  body.bg-slate-950 :where([class~="bg-slate-900"], [class~="sm:bg-slate-900"], [class~="bg-slate-900/50"], [class~="bg-slate-900/60"], [class~="bg-slate-900/70"], [class~="bg-slate-900/80"], [class~="bg-slate-900/90"]) { background-color: #ffffff; }
+  body.bg-slate-950 :where([class~="bg-slate-950/60"], [class~="bg-slate-950/70"], [class~="sm:bg-slate-950/70"], [class~="bg-slate-950/80"]) { background-color: #f8fafc; }
   body.bg-slate-950 :where([class~="bg-slate-950/90"], [class~="bg-slate-950/95"]) { background-color: rgb(255 255 255 / 96%); }
   body.bg-slate-950 :where([class~="bg-slate-700"], [class~="bg-slate-800"], [class~="bg-slate-800/70"]) { background-color: #e2e8f0; }
   body.bg-slate-950 :where([class~="bg-indigo-950/50"]) { background-color: #e0e7ff; }
