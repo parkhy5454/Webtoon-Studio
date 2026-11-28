@@ -2260,7 +2260,8 @@ export default function WebtoonStudioPage() {
                         const touch = event.changedTouches[0];
                         const dx = touch.clientX - start.x;
                         const dy = touch.clientY - start.y;
-                        if (Math.abs(dx) < 24 || Math.abs(dx) <= Math.abs(dy) * 1.1) return;
+                        // Detect short horizontal swipes without treating vertical scrolling as a turn.
+                        if (Math.abs(dx) < 12 || Math.abs(dx) <= Math.abs(dy) * 1.1) return;
                         setReaderCutIndex((previous) => Math.min(
                           Math.max(0, Math.min(previous, viewerImageCuts.length - 1) + (dx < 0 ? 1 : -1)),
                           viewerImageCuts.length - 1
