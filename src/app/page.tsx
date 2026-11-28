@@ -2260,7 +2260,7 @@ export default function WebtoonStudioPage() {
                         const touch = event.changedTouches[0];
                         const dx = touch.clientX - start.x;
                         const dy = touch.clientY - start.y;
-                        if (Math.abs(dx) < 36 || Math.abs(dx) <= Math.abs(dy) * 1.25) return;
+                        if (Math.abs(dx) < 24 || Math.abs(dx) <= Math.abs(dy) * 1.1) return;
                         setReaderCutIndex((previous) => Math.min(
                           Math.max(0, Math.min(previous, viewerImageCuts.length - 1) + (dx < 0 ? 1 : -1)),
                           viewerImageCuts.length - 1
@@ -2282,15 +2282,12 @@ export default function WebtoonStudioPage() {
                           alt=""
                           aria-hidden="true"
                           className="absolute w-px h-px opacity-0 pointer-events-none"
-                          onLoad={async (event) => {
-                            const image = event.currentTarget;
-                            try {
-                              await image.decode();
-                              if (image.isConnected) {
-                                setVisibleReaderCut({ episode: readerEpisodeKey, index: activeReaderCut, src: requestedReaderSrc });
-                              }
-                            } catch {
-                              if (image.isConnected) setReaderLoadFailed(readerRequestKey);
+                          onLoad={(event) => {
+                            if (event.currentTarget.naturalWidth > 0) {
+                              setReaderLoadFailed('');
+                              setVisibleReaderCut({ episode: readerEpisodeKey, index: activeReaderCut, src: requestedReaderSrc });
+                            } else {
+                              setReaderLoadFailed(readerRequestKey);
                             }
                           }}
                           onError={() => setReaderLoadFailed(readerRequestKey)}
@@ -2314,6 +2311,9 @@ export default function WebtoonStudioPage() {
                         aria-label="이전 컷">← 이전 컷</button>
                       <span className="text-xs text-slate-400" aria-live="polite">
                         {visibleCut ? visibleCut.index + 1 : '–'} / {viewerImageCuts.length}
+                        {visibleCut && !requestedCutReady && readerLoadFailed !== readerRequestKey && (
+                          <span className="block text-center">{activeReaderCut + 1}컷 불러오는 중…</span>
+                        )}
                       </span>
                       <button type="button" disabled={activeReaderCut >= viewerImageCuts.length - 1}
                         onClick={() => setReaderCutIndex(Math.min(viewerImageCuts.length - 1, activeReaderCut + 1))}
