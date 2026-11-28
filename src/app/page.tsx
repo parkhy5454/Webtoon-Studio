@@ -530,12 +530,7 @@ export default function WebtoonStudioPage() {
         if (!response.ok) return;
         const data = await response.json();
         const databaseWorks = Array.isArray(data.works) ? (data.works as WebtoonWork[]) : [];
-        setWorks((currentWorks) => {
-          const merged = new Map<string, WebtoonWork>();
-          [...currentWorks.filter((work) => !work.isOfficial), ...databaseWorks].filter(isCatalogWork)
-            .forEach((work) => merged.set(work.id, work));
-          return Array.from(merged.values());
-        });
+        setWorks(databaseWorks.filter(isCatalogWork));
       } catch {
         // DB에 연결할 수 없으면 로컬 작품을 그대로 표시합니다.
       }
@@ -1540,6 +1535,31 @@ export default function WebtoonStudioPage() {
   const uploadWork = myWorksList.find((work) => work.id === targetWorkId) ?? myWorksList[0];
   const suggestedEpisodeNumber = nextEpisodeNumber(uploadWork?.episodes ?? []);
   const visibleNewEpisodeNumber = newEpisodeNumber ?? String(suggestedEpisodeNumber);
+
+  const [deletingWorkId, setDeletingWorkId] = useState<string | null>(null);
+  const deleteOwnedWork = async (work: WebtoonWork) => {
+    if (deletingWorkId || !window.confirm(`《${work.title}》 · ${work.episodes.length}화 · ${work.id}\n작품관에서 삭제할까요?`)) return;
+    setDeletingWorkId(work.id);
+    try {
+      const response = await fetch('/api/creator/works?id=' + encodeURIComponent(work.id), { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '작품을 삭제하지 못했습니다.');
+      setWorks((items) => items.filter((item) => item.id !== work.id));
+      if (targetWorkId === work.id) resetEpisodeEditor('');
+      if (catalogWorkId === work.id) setCatalogWorkId(null);
+      if (selectedWorkId === work.id) setSelectedWorkId('');
+      if (genreWorkId === work.id) setGenreWorkId('');
+      try {
+        const cached: WebtoonWork[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CUSTOM_WORKS) || '[]');
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_WORKS, JSON.stringify(cached.filter((item) => item.id !== work.id)));
+      } catch { /* The server remains the source of truth. */ }
+      showToast('작품을 삭제했습니다.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '작품을 삭제하지 못했습니다.');
+    } finally {
+      setDeletingWorkId(null);
+    }
+  };
 
   const genreWork = myWorksList.find((work) => work.id === genreWorkId);
 
@@ -2765,6 +2785,29 @@ export default function WebtoonStudioPage() {
                     </div>
                   )}
 
+                  {currentUser?.role === 'creator' && (
+                    <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                      <h3 className="text-base font-bold text-white">내 작품 목록</h3>
+                      {myWorksList.length === 0 && <p className="text-sm text-slate-400">등록한 작품이 없습니다.</p>}
+                      {myWorksList.map((work) => (
+                        <div key={work.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 p-3">
+                          <div className="min-w-0">
+                            <p className="break-words font-bold text-white">{work.title}</p>
+                            <p className="text-sm text-slate-300">
+                              {work.createdAt ? new Date(work.createdAt).toLocaleString('ko-KR') + ' · ' : ''}
+                              등록 회차 {work.episodes.length}개
+                            </p>
+                            <p className="break-all text-xs text-slate-400">작품 번호 {work.id}</p>
+                          </div>
+                          <button type="button" disabled={deletingWorkId !== null}
+                            onClick={() => void deleteOwnedWork(work)}
+                            className="rounded-lg border border-rose-500/40 px-3 py-2 text-sm font-bold text-rose-300 disabled:opacity-50">
+                            {deletingWorkId === work.id ? '삭제 중…' : '작품 삭제'}
+                          </button>
+                        </div>
+                      ))}
+                    </section>
+                  )}
                   {/* 작가 또는 관리자 계정일 때 작가 스튜디오 노출 */}
                   {(currentUser?.role === 'creator' || isAdminLoggedIn) && (
                     <div className="min-w-0 max-w-full overflow-x-clip [overflow-wrap:anywhere] light-entry studio-entry space-y-4 pt-2 border-t border-slate-800">

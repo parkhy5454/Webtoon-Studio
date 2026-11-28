@@ -60,6 +60,7 @@ export async function ensureAuthSchema() {
       work_id TEXT PRIMARY KEY REFERENCES webtoon_creator_works(id) ON DELETE CASCADE
     )
   `;
+  await sql`ALTER TABLE webtoon_hidden_works ADD COLUMN IF NOT EXISTS deleted_by_author BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`CREATE INDEX IF NOT EXISTS webtoon_creator_works_author_idx ON webtoon_creator_works(author_id)`;
 }
 

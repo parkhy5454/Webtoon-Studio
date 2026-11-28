@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
           INSERT INTO webtoon_hidden_works(work_id) SELECT target FROM report WHERE kind = 'work' AND ${state} = 'hide'
           ON CONFLICT DO NOTHING
         ), restored AS (
-          DELETE FROM webtoon_hidden_works h USING report WHERE h.work_id = report.target AND report.kind = 'work' AND ${state} = 'restore'
+          DELETE FROM webtoon_hidden_works h USING report WHERE h.work_id = report.target AND report.kind = 'work' AND NOT h.deleted_by_author AND ${state} = 'restore'
         ), comments AS (
           UPDATE webtoon_discussion d SET hidden = (${state} = 'hide') FROM report
           WHERE report.kind = 'comment' AND d.id::text = report.target AND ${state} <> 'dismiss'

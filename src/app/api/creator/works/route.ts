@@ -1,5 +1,5 @@
 import { ensureLibrarySchema } from '@/lib/reader-library';
-import { getReferralWorks } from '@/lib/referral-access';
+import { ensureReferralAccessSchema, getReferralWorks } from '@/lib/referral-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql, hasDatabaseUrl } from '@/lib/db';
 import { ensureAuthSchema, getSessionUser } from '@/lib/auth';
@@ -27,8 +27,9 @@ export async function GET(request: NextRequest) {
         (SELECT count(*)::int FROM webtoon_reader_library l WHERE l.work_id = w.id AND l.user_id <> w.author_id
           AND (l.last_read_at >= NOW() - INTERVAL '7 days' OR (l.saved AND l.saved_at >= NOW() - INTERVAL '7 days'))) AS popularity
       FROM webtoon_creator_works w
-      WHERE NOT EXISTS (SELECT 1 FROM webtoon_hidden_works h WHERE h.work_id = w.id)
-         OR ${Boolean(admin)} OR author_id = ${user?.id ?? null}
+      WHERE NOT EXISTS (SELECT 1 FROM webtoon_hidden_works h WHERE h.work_id = w.id AND h.deleted_by_author)
+        AND (NOT EXISTS (SELECT 1 FROM webtoon_hidden_works h WHERE h.work_id = w.id)
+          OR ${Boolean(admin)} OR author_id = ${user?.id ?? null})
       ORDER BY created_at ASC
     `;
     const paidWorks = new Set(user ? [...await getPaidWorks(user.id), ...await getReferralWorks(user.id)] : []);
@@ -160,5 +161,44 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error('PATCH /api/creator/works error:', error);
     return NextResponse.json({ error: '장르를 저장하지 못했습니다.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await getSessionUser(request);
+    if (user?.role !== 'creator') return NextResponse.json({ error: '작가 로그인이 필요합니다.' }, { status: 401 });
+    const id = request.nextUrl.searchParams.get('id');
+    if (!id || id.length > 200) return NextResponse.json({ error: '삭제할 작품을 확인해 주세요.' }, { status: 400 });
+    await ensureReferralAccessSchema();
+    const sql = getSql();
+    const [work] = await sql`
+      SELECT id FROM webtoon_creator_works WHERE id = ${id} AND author_id = ${user.id}
+    `;
+    if (!work) return NextResponse.json({ error: '삭제할 작품을 찾을 수 없습니다.' }, { status: 404 });
+
+    const rows = await sql`
+      INSERT INTO webtoon_hidden_works (work_id, deleted_by_author)
+      SELECT w.id, TRUE FROM webtoon_creator_works w
+      WHERE w.id = ${id} AND w.author_id = ${user.id}
+        AND NOT EXISTS (
+          SELECT 1 FROM webtoon_payment_orders p WHERE p.work_id = w.id
+            AND ((p.status IN ('PAID', 'PARTIAL_CANCELLED') AND p.expires_at > NOW())
+              OR (p.status = 'PENDING' AND p.created_at > NOW() - INTERVAL '30 minutes'))
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM webtoon_referral_redemptions r
+          JOIN webtoon_referrals f ON f.invitee_id = r.invitee_id
+          JOIN webtoon_payment_orders p ON p.id = f.first_payment_id
+          WHERE r.work_id = w.id AND r.expires_at > NOW() AND p.status IN ('PAID', 'PARTIAL_CANCELLED')
+        )
+      ON CONFLICT (work_id) DO UPDATE SET deleted_by_author = TRUE
+      RETURNING work_id
+    `;
+    if (!rows.length) return NextResponse.json({ error: '사용 중인 이용권이나 진행 중인 결제가 있어 삭제할 수 없습니다.' }, { status: 409 });
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    console.error('DELETE /api/creator/works error:', error);
+    return NextResponse.json({ error: '작품을 삭제하지 못했습니다. 다시 시도해 주세요.' }, { status: 500 });
   }
 }
