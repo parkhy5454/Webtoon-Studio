@@ -2549,7 +2549,10 @@ export default function WebtoonStudioPage() {
             </section>
 
             {/* (A) 회원 / 작가 계정 관리 (관리자 관련 문구 및 폼은 일반 화면에 노출하지 않음) */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-500/30 space-y-5">
+            <div className={isLoggedIn
+              ? 'p-6 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900 border border-indigo-500/30 space-y-5'
+              : 'light-entry light-login rounded-2xl p-4 sm:p-6 space-y-4'}>
+              {isLoggedIn && (
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center shrink-0">
@@ -2563,11 +2566,8 @@ export default function WebtoonStudioPage() {
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-white">
-                      회원가입 · 로그인 (독자 · 작가)
+                      내 계정
                     </h2>
-                    <p className="text-xs text-slate-300">
-                      일반 독자 회원 또는 창작 작가 회원으로 가입하고 로그인할 수 있습니다.
-                    </p>
                   </div>
                 </div>
 
@@ -2583,20 +2583,23 @@ export default function WebtoonStudioPage() {
                 )}
               </div>
 
+              )}
+
               {!isLoggedIn ? (
                 /* 비로그인 상태: 일반 독자 / 작가 회원가입 및 로그인 폼 */
-                <div className="p-4 sm:p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-4">
-                  <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-900 border border-slate-800">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-2 border-b border-slate-300 pb-2">
                     <button
                       type="button"
+                      aria-pressed={authMode === 'signup'}
                       onClick={() => {
                         setAuthMode('signup');
                         setAuthError('');
                       }}
-                      className={`py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition ${
+                      className={`min-h-11 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition ${
                         authMode === 'signup'
                           ? 'bg-indigo-600 text-white shadow'
-                          : 'text-slate-400 hover:text-slate-200'
+                          : 'text-slate-700 hover:bg-slate-200'
                       }`}
                     >
                       <UserPlus className="w-4 h-4" />
@@ -2604,14 +2607,15 @@ export default function WebtoonStudioPage() {
                     </button>
                     <button
                       type="button"
+                      aria-pressed={authMode === 'login'}
                       onClick={() => {
                         setAuthMode('login');
                         setAuthError('');
                       }}
-                      className={`py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition ${
+                      className={`min-h-11 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition ${
                         authMode === 'login'
                           ? 'bg-indigo-600 text-white shadow'
-                          : 'text-slate-400 hover:text-slate-200'
+                          : 'text-slate-700 hover:bg-slate-200'
                       }`}
                     >
                       <LogIn className="w-4 h-4" />
@@ -2619,48 +2623,52 @@ export default function WebtoonStudioPage() {
                     </button>
                   </div>
 
-                  <form id="account-auth-form" onSubmit={handleAuthSubmit} className="light-entry light-login space-y-4 rounded-xl p-4 sm:p-5">
+                  <form id="account-auth-form" onSubmit={handleAuthSubmit} className="space-y-4">
                     {authMode === 'signup' && (
                       <>
                         {/* 회원 유형 선택: 일반 독자 vs 창작 작가 */}
                         <div>
                           <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                            가입 유형 선택
+                            가입 유형
                           </label>
                           <div className="grid grid-cols-2 gap-2">
                             <button
                               type="button"
+                              aria-pressed={signupRole === 'reader'}
                               onClick={() => setSignupRole('reader')}
-                              className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                              className={`min-h-11 p-2.5 rounded-xl border text-sm font-bold flex items-center justify-center gap-1.5 transition ${
                                 signupRole === 'reader'
-                                  ? 'bg-amber-400/20 border-amber-400 text-amber-300'
-                                  : 'bg-slate-900 border-slate-700 text-slate-400'
+                                  ? 'bg-amber-100 border-amber-500 text-amber-950'
+                                  : 'bg-white border-slate-300 text-slate-700'
                               }`}
                             >
                               <User className="w-3.5 h-3.5" />
-                              일반 독자 회원
+                              독자
                             </button>
                             <button
                               type="button"
+                              aria-pressed={signupRole === 'creator'}
                               onClick={() => setSignupRole('creator')}
-                              className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                              className={`min-h-11 p-2.5 rounded-xl border text-sm font-bold flex items-center justify-center gap-1.5 transition ${
                                 signupRole === 'creator'
-                                  ? 'bg-indigo-500/25 border-indigo-400 text-indigo-200'
-                                  : 'bg-slate-900 border-slate-700 text-slate-400'
+                                  ? 'bg-indigo-100 border-indigo-500 text-indigo-950'
+                                  : 'bg-white border-slate-300 text-slate-700'
                               }`}
                             >
                               <PenTool className="w-3.5 h-3.5" />
-                              작가(창작자) 회원
+                              작가
                             </button>
                           </div>
                         </div>
 
                         <div>
-                          <label className="block text-xs font-medium text-slate-300 mb-1">
+                          <label htmlFor="signup-name" className="block text-sm font-medium text-slate-300 mb-1">
                             {signupRole === 'creator' ? '작가 필명 (활동명)' : '독자 닉네임'}
                           </label>
                           <input
                             type="text"
+                            id="signup-name"
+                            autoComplete="nickname"
                             value={displayNameInput}
                             onChange={(e) => setDisplayNameInput(e.target.value)}
                             placeholder={
@@ -2668,7 +2676,7 @@ export default function WebtoonStudioPage() {
                                 ? '예: 달빛작가, 서울스케치'
                                 : '예: 밤하늘독자'
                             }
-                            className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                            className="min-w-0 w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
                           />
                         </div>
                       </>
@@ -2711,7 +2719,7 @@ export default function WebtoonStudioPage() {
                     </div>
 
                     {authError && (
-                      <p className="text-xs text-rose-400 flex items-center gap-1">
+                      <p role="alert" className="text-sm text-rose-400 flex items-center gap-1">
                         <AlertCircle className="w-3.5 h-3.5" />
                         {authError}
                       </p>
@@ -2722,13 +2730,11 @@ export default function WebtoonStudioPage() {
                       className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition"
                     >
                       {authMode === 'signup'
-                        ? signupRole === 'creator'
-                          ? '작가 계정 생성하고 연재 시작하기'
-                          : '일반 독자 회원가입 완료'
+                        ? '가입하기'
                         : '로그인'}
                     </button>
                   </form>
-                  {authMode === 'login' && <a href="/reset-password" className="text-xs text-slate-300 underline">비밀번호 재설정</a>}
+                  {authMode === 'login' && <a href="/reset-password" className="text-sm text-indigo-800 underline">비밀번호 재설정</a>}
                 </div>
               ) : (
                 /* 로그인 상태 표시 카드 */
