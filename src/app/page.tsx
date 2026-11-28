@@ -95,7 +95,7 @@ interface WebtoonWork {
 }
 
 // Store the already compressed images in a ZIP without recompressing them.
-async function buildEpisodeZip(cuts: EpisodeCut[]) {
+async function buildEpisodeZip(cuts: EpisodeCut[], onProgress: (done: number, total: number) => void) {
   const parts: BlobPart[] = [];
   const directory: ArrayBuffer[] = [];
   const encoder = new TextEncoder();
@@ -108,44 +108,58 @@ async function buildEpisodeZip(cuts: EpisodeCut[]) {
   let directorySize = 0;
   const images = cuts.filter((cut) => cut.img?.trim());
   if (!images.length || images.length > 65535) throw new Error('다운로드할 이미지 수를 확인해 주세요.');
-  for (let index = 0; index < images.length; index++) {
-    const response = await fetch(images[index].img).catch(() => {
-      throw new Error(`${index + 1}번째 이미지에 접근할 수 없습니다. 이미지 주소를 확인해 주세요.`);
-    });
-    if (!response.ok) throw new Error(`${index + 1}번째 이미지를 불러오지 못했습니다.`);
-    const type = response.headers.get('content-type')?.split(';')[0];
-    const extension = type === 'image/webp' ? 'webp' : type === 'image/png' ? 'png' : type === 'image/jpeg' ? 'jpg' : '';
-    if (!extension) throw new Error(`${index + 1}번째 이미지의 형식을 확인할 수 없습니다.`);
-    const data = await response.arrayBuffer();
-    if (offset + data.byteLength + directorySize + 256 >= 0xffffffff) throw new Error('ZIP으로 저장하기에 회차 용량이 너무 큽니다.');
-    let crc = 0xffffffff;
-    const bytes = new Uint8Array(data);
-    for (let position = 0; position < bytes.length; position++) {
-      crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[position]) & 255];
+  async function readImage(cut: EpisodeCut, index: number) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await fetch(cut.img, { signal: controller.signal });
+      if (!response.ok) throw new Error();
+      const type = response.headers.get('content-type')?.split(';')[0];
+      const extension = type === 'image/webp' ? 'webp' : type === 'image/png' ? 'png' : type === 'image/jpeg' ? 'jpg' : '';
+      if (!extension) throw new Error();
+      return { data: await response.arrayBuffer(), extension };
+    } catch {
+      throw new Error(`${index + 1}번째 컷 ${controller.signal.aborted ? '응답 시간이 초과되었습니다' : '이미지를 읽을 수 없습니다'}. 다시 시도해 주세요.`);
+    } finally {
+      window.clearTimeout(timer);
     }
-    crc = (crc ^ 0xffffffff) >>> 0;
-    const name = encoder.encode(`cut-${String(index + 1).padStart(Math.max(3, String(images.length).length), '0')}.${extension}`);
-    const local = new ArrayBuffer(30 + name.length);
-    const header = new DataView(local);
-    header.setUint32(0, 0x04034b50, true);
-    header.setUint16(4, 20, true);
-    header.setUint16(12, 33, true);
-    header.setUint32(14, crc, true);
-    header.setUint32(18, data.byteLength, true);
-    header.setUint32(22, data.byteLength, true);
-    header.setUint16(26, name.length, true);
-    new Uint8Array(local).set(name, 30);
-    const entry = new ArrayBuffer(46 + name.length);
-    const record = new DataView(entry);
-    record.setUint32(0, 0x02014b50, true);
-    record.setUint16(4, 20, true);
-    new Uint8Array(entry).set(new Uint8Array(local, 4, 26), 6);
-    record.setUint32(42, offset, true);
-    new Uint8Array(entry).set(name, 46);
-    parts.push(local, data);
-    directory.push(entry);
-    offset += local.byteLength + data.byteLength;
-    directorySize += entry.byteLength;
+  }
+  for (let first = 0; first < images.length; first += 4) {
+    const batch = await Promise.all(images.slice(first, first + 4).map((cut, i) => readImage(cut, first + i)));
+    for (let i = 0; i < batch.length; i++) {
+      const index = first + i;
+      const { data, extension } = batch[i];
+      if (offset + data.byteLength + directorySize + 256 >= 0xffffffff) throw new Error('ZIP으로 저장하기에 회차 용량이 너무 큽니다.');
+      let crc = 0xffffffff;
+      const bytes = new Uint8Array(data);
+      for (let position = 0; position < bytes.length; position++) {
+        crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[position]) & 255];
+      }
+      crc = (crc ^ 0xffffffff) >>> 0;
+      const name = encoder.encode(`cut-${String(index + 1).padStart(Math.max(3, String(images.length).length), '0')}.${extension}`);
+      const local = new ArrayBuffer(30 + name.length);
+      const header = new DataView(local);
+      header.setUint32(0, 0x04034b50, true);
+      header.setUint16(4, 20, true);
+      header.setUint16(12, 33, true);
+      header.setUint32(14, crc, true);
+      header.setUint32(18, data.byteLength, true);
+      header.setUint32(22, data.byteLength, true);
+      header.setUint16(26, name.length, true);
+      new Uint8Array(local).set(name, 30);
+      const entry = new ArrayBuffer(46 + name.length);
+      const record = new DataView(entry);
+      record.setUint32(0, 0x02014b50, true);
+      record.setUint16(4, 20, true);
+      new Uint8Array(entry).set(new Uint8Array(local, 4, 26), 6);
+      record.setUint32(42, offset, true);
+      new Uint8Array(entry).set(name, 46);
+      parts.push(local, data);
+      directory.push(entry);
+      offset += local.byteLength + data.byteLength;
+      directorySize += entry.byteLength;
+    }
+    onProgress(first + batch.length, images.length);
   }
   const end = new ArrayBuffer(22);
   const footer = new DataView(end);
@@ -371,6 +385,7 @@ export default function WebtoonStudioPage() {
 
   const [targetWorkId, setTargetWorkId] = useState<string>('');
   const [isDownloadingEpisode, setIsDownloadingEpisode] = useState(false);
+  const [zipProgress, setZipProgress] = useState('');
   const [episodeDownloadError, setEpisodeDownloadError] = useState('');
   const [newEpisodeNumber, setNewEpisodeNumber] = useState<string | null>(null);
   const [editingEpisodeNum, setEditingEpisodeNum] = useState<number | null>(null);
@@ -1279,10 +1294,13 @@ export default function WebtoonStudioPage() {
     const episode = work?.episodes.find((item) => item.num === episodeNumber);
     if (!work || !episode || isDownloadingEpisode) return;
 
+    setZipProgress(`제${episode.num}화 ZIP 준비 중…`);
     setIsDownloadingEpisode(true);
     setEpisodeDownloadError('');
     try {
-      const zip = await buildEpisodeZip(episode.cuts);
+      const zip = await buildEpisodeZip(episode.cuts, (done, total) => {
+        setZipProgress(`제${episode.num}화 ZIP 준비 중 · ${done}/${total}컷`);
+      });
       const url = URL.createObjectURL(zip);
       const link = document.createElement('a');
       link.href = url;
@@ -2795,7 +2813,7 @@ export default function WebtoonStudioPage() {
                   {currentUser?.role === 'creator' && (
                     <section className="space-y-3 sm:rounded-xl sm:border border-slate-800 sm:bg-slate-900 sm:p-4">
                       <h3 className="text-base font-bold text-white">내 작품 목록</h3>
-                      {isDownloadingEpisode && <p role="status" className="text-sm text-slate-400">ZIP 준비 중…</p>}
+                      {isDownloadingEpisode && <p role="status" className="text-sm text-slate-400">{zipProgress}</p>}
                       {episodeDownloadError && <p role="alert" className="text-sm text-rose-300">{episodeDownloadError}</p>}
                       {myWorksList.length === 0 && <p className="text-sm text-slate-400">등록한 작품이 없습니다.</p>}
                       {myWorksList.map((work) => (
@@ -3086,7 +3104,7 @@ export default function WebtoonStudioPage() {
                                     <button type="button" onClick={() => void downloadSavedEpisode()}
                                       disabled={isDownloadingEpisode}
                                       className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-white disabled:opacity-50">
-                                      {isDownloadingEpisode ? 'ZIP 준비 중…' : '저장된 회차 ZIP 다운로드'}
+                                      {isDownloadingEpisode ? zipProgress : '저장된 회차 ZIP 다운로드'}
                                     </button>
                                     {episodeDownloadError && <p role="alert" className="text-xs text-rose-300">{episodeDownloadError}</p>}
                                   </div>
